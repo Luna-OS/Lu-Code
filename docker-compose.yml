@@ -1,0 +1,20 @@
+# Beispiel: docker compose up -d → http://localhost:8510 (Vorschau der Agenten auf :8511)
+# Das erste Konto wird Administrator. In den Einstellungen nrzGit (Adresse + Token) verbinden.
+services:
+  lucode:
+    build: .
+    image: lucode:latest
+    restart: unless-stopped
+    ports:
+      - "8510:8510"
+      - "8511:8511"
+    environment:
+      # Vorgabe für die nrzGit-Adresse (kann in den Einstellungen geändert werden)
+      LUCODE_NRZGIT_URL: ""
+    volumes:
+      - lucode-data:/data
+      # Docker des Hosts: Agenten können Images bauen und in die Registry von nrzGit schieben
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  lucode-data:
