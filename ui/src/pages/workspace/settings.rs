@@ -419,7 +419,18 @@ fn NrzGitSection() -> Element {
             for s in list {
                 NrzGitForm { key: "{s.kind}-{version}", status: s.clone(), onchange: move |_| version += 1 }
             }
-            Section { title: tr("So geht’s"), description: tr("Einmal einrichten – danach arbeiten alle Agenten mit nrzGit, luGit und GitHub."),
+            ForgeHelp {}
+        },
+    }
+}
+
+/// „So geht’s“ – für die Plattformen, die diese Instanz anbietet (eine frische: GitHub).
+#[component]
+fn ForgeHelp() -> Element {
+    let (nrzgit, lugit) = (offers_forge("nrzgit"), offers_forge("lugit"));
+    rsx! {
+        Section { title: tr("So geht’s"), description: trf("Einmal einrichten – danach arbeiten alle Agenten mit {0}.", &[&forges_text(true)]),
+            if nrzgit {
                 ol { class: "grid gap-3 text-sm",
                     Step { n: 1, text: tr("Öffne nrzGit und gehe zu Einstellungen → MCP (der Knopf „Token in nrzGit erstellen“ führt direkt dorthin).") }
                     Step { n: 2, text: tr("Erstelle ein Token für luCode und kopiere es – es wird nur einmal angezeigt.") }
@@ -427,13 +438,22 @@ fn NrzGitSection() -> Element {
                     Step { n: 4, text: tr("Fertig: Unter „Projekt hinzufügen“ erscheinen deine Repositories. Alle Agenten können Repositories anlegen, pushen, Pull Requests und Releases erstellen und Images in die Registry von nrzGit bauen.") }
                 }
                 p { class: "mt-4 max-w-xl text-sm text-muted-foreground",
-                    {tr("GitHub geht zusätzlich zu beiden: ein Personal Access Token einfügen (github.com → Settings → Developer settings). Klassisch braucht es das Recht „repo“ (für Organisationen dazu „read:org“), fein eingestellt Contents, Pull requests und Administration mit Lesen und Schreiben. luCode klont, pusht und legt Pull Requests an; die Agenten bekommen GitHub als MCP-Server (github) und können das CLI gh benutzen.")}
+                    {tr("GitHub geht zusätzlich: ein Personal Access Token einfügen (github.com → Settings → Developer settings). Klassisch braucht es das Recht „repo“ (für Organisationen dazu „read:org“), fein eingestellt Contents, Pull requests und Administration mit Lesen und Schreiben. luCode klont, pusht und legt Pull Requests an; die Agenten bekommen GitHub als MCP-Server (github) und können das CLI gh benutzen.")}
                 }
-                p { class: "mt-4 max-w-xl text-sm text-muted-foreground",
-                    {tr("luGit geht genauso und zusätzlich zu nrzGit: Adresse (z. B. http://umbrel.local:8430) und ein Zugriffstoken (lgt_…) mit den Rechten „user“ und „repo“ eintragen. Ab luGit 1.1.0 bekommen die Agenten luGit ebenfalls als MCP-Server (lugit); bei älteren Versionen klont, pusht und legt luCode Pull Requests an, die Agenten arbeiten dort mit git.")}
+            } else {
+                ol { class: "grid gap-3 text-sm",
+                    Step { n: 1, text: tr("Öffne github.com → Settings → Developer settings → Personal access tokens (der Knopf „Token bei GitHub erstellen“ oben führt dorthin).") }
+                    Step { n: 2, text: tr("Erstelle ein Token: klassisch mit dem Recht „repo“ (für Organisationen dazu „read:org“) – oder fein eingestellt mit Contents, Pull requests und Administration (Lesen und Schreiben). Kopiere es – es wird nur einmal angezeigt.") }
+                    Step { n: 3, text: tr("Füge das Token oben ein und klicke auf „Verbinden“. luCode prüft es sofort.") }
+                    Step { n: 4, text: tr("Fertig: Unter „Projekt hinzufügen“ erscheinen deine Repositories. luCode klont, pusht und legt Pull Requests an; die Agenten bekommen GitHub als MCP-Server (github) und können das CLI gh benutzen.") }
                 }
             }
-        },
+            if lugit {
+                p { class: "mt-4 max-w-xl text-sm text-muted-foreground",
+                    {tr("luGit: Adresse (z. B. http://umbrel.local:8430) und ein Zugriffstoken (lgt_…) mit den Rechten „user“ und „repo“ eintragen. Ab luGit 1.1.0 bekommen die Agenten luGit als MCP-Server (lugit); bei älteren Versionen klont, pusht und legt luCode Pull Requests an, die Agenten arbeiten dort mit git.")}
+                }
+            }
+        }
     }
 }
 
@@ -566,9 +586,9 @@ fn NrzGitForm(status: NrzGitStatus, onchange: EventHandler<()>) -> Element {
         Section {
             title: forge.to_string(),
             description: if lugit {
-                tr("luCode klont, pusht und legt Pull Requests mit deinem Zugriffstoken an – zusätzlich zu nrzGit. Ab luGit 1.1.0 bekommen die Agenten luGit als MCP-Server.")
+                tr("luCode klont, pusht und legt Pull Requests mit deinem Zugriffstoken an. Ab luGit 1.1.0 bekommen die Agenten luGit als MCP-Server.")
             } else if github {
-                tr("luCode klont, pusht und legt Pull Requests mit deinem Personal Access Token an – zusätzlich zu nrzGit und luGit. Die Agenten bekommen GitHub als MCP-Server und können das CLI gh benutzen.")
+                tr("luCode klont, pusht und legt Pull Requests mit deinem Personal Access Token an. Die Agenten bekommen GitHub als MCP-Server und können das CLI gh benutzen.")
             } else {
                 tr("luCode klont, pusht und legt Pull Requests mit deinem Zugriffstoken an – die Agenten bekommen nrzGit zusätzlich als MCP-Server.")
             },

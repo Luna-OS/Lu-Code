@@ -20,6 +20,7 @@ async fn current(state: &AppState) -> AppResult<InstanceSettings> {
     Ok(InstanceSettings {
         registration_open: super::users::registration_open(&state.db).await?,
         nrzgit_url: super::nrzgit::default_url(state).await?,
+        private_forges: super::nrzgit::private_forges(state).await?,
         max_parallel_runs: state.config.max_parallel_runs as i64,
         preview_port: state.config.preview_port as i64,
         data_dir: state.config.data_dir.to_string_lossy().to_string(),
@@ -40,5 +41,6 @@ async fn put_settings(state: &State<AppState>, _admin: AdminUser, body: Json<Ins
     db::set_setting(&state.db, "registration_open", if body.registration_open { "true" } else { "false" }).await?;
     let url = if body.nrzgit_url.trim().is_empty() { String::new() } else { super::nrzgit::normalize_url(&body.nrzgit_url)? };
     db::set_setting(&state.db, "nrzgit_url", &url).await?;
+    db::set_setting(&state.db, "private_forges", if body.private_forges { "true" } else { "false" }).await?;
     Ok(Json(current(state).await?))
 }

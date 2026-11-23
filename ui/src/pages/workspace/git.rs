@@ -295,7 +295,7 @@ fn FileStatusDot(#[props(into)] status: String) -> Element {
 #[component]
 pub fn PullRequestDialog(open: Signal<bool>, status: WorkspaceStatus) -> Element {
     rsx! {
-        Modal { open, title: tr("Pull Request in nrzGit"), description: trf("„{0}“ wird gepusht und als Pull Request in {1} angelegt.", &[&status.branch, &status.repo]), class: "max-w-xl",
+        Modal { open, title: trf("Pull Request in {0}", &[&project_forge_name(status.project_id)]), description: trf("„{0}“ wird gepusht und als Pull Request in {1} angelegt.", &[&status.branch, &status.repo]), class: "max-w-xl",
             FreshStatus { thread_id: status.thread_id, render: move |s: WorkspaceStatus| rsx! { PullRequestForm { open, status: s } } }
         }
     }
@@ -325,7 +325,7 @@ fn PullRequestForm(open: Signal<bool>, status: WorkspaceStatus) -> Element {
                     button { class: btn(BTN_OUTLINE), onclick: move |_| open.set(false), {tr("Schliessen")} }
                     ExternalLink { href: pr.url.clone(), class: btn(BTN_PRIMARY),
                         icons::ExternalLink {}
-                        {tr("In nrzGit öffnen")}
+                        {trf("In {0} öffnen", &[&project_forge_name(status.project_id)])}
                     }
                 }
             }

@@ -48,7 +48,7 @@ pub fn normalize_url(url: &str) -> AppResult<String> {
         }
     }
     if u.is_empty() {
-        return Err(AppError::bad("Bitte die Adresse von nrzGit angeben."));
+        return Err(AppError::bad("Bitte die Adresse der Git-Plattform angeben."));
     }
     if !u.starts_with("http://") && !u.starts_with("https://") {
         u = format!("http://{u}");
@@ -56,7 +56,7 @@ pub fn normalize_url(url: &str) -> AppResult<String> {
     let rest = u.split_once("://").map(|(_, r)| r).unwrap_or("");
     let host = rest.split('/').next().unwrap_or("");
     if host.is_empty() || u.chars().any(|c| c.is_whitespace() || c.is_control()) || rest.contains('@') {
-        return Err(AppError::bad("Die Adresse von nrzGit ist ungültig."));
+        return Err(AppError::bad("Die Adresse der Git-Plattform ist ungültig."));
     }
     // github.com in jeder Schreibweise (auch ein Profil oder die API-Adresse) → eine feste Adresse
     if matches!(host.to_ascii_lowercase().as_str(), "github.com" | "www.github.com" | "api.github.com") {
@@ -226,6 +226,31 @@ pub async fn refresh_mcp(state: &AppState, user_id: i64) -> AppResult<()> {
         sqlx::query("UPDATE nrzgit_connections SET has_mcp = 1 WHERE user_id = ? AND kind = 'lugit'").bind(user_id).execute(&state.db).await?;
     }
     Ok(())
+}
+
+/// Bietet die Instanz die selbst gehosteten Plattformen (luGit, nrzGit) jedem an? Einstellung der
+/// Verwaltung (`private_forges`), sonst die Konfiguration (`LUCODE_PRIVATE_FORGES`).
+pub async fn private_forges(state: &AppState) -> AppResult<bool> {
+    Ok(match db::setting(&state.db, "private_forges", "").await?.as_str() {
+        "true" => true,
+        "false" => false,
+        _ => state.config.private_forges,
+    })
+}
+
+/// Plattformen, die die Oberfläche einem Benutzer anbietet und beim Namen nennt: GitHub immer;
+/// luGit und nrzGit nur, wenn er sie verbunden hat (z. B. nach dem Umzug von nrzCode), die
+/// Instanz sie anbietet ([`private_forges`]) oder – für nrzGit – eine Vorgabe-Adresse hinterlegt
+/// ist. Eine frische Instanz kennt so nur GitHub. Das betrifft allein, was angeboten wird:
+/// Verbundene Plattformen arbeiten unabhängig davon.
+pub async fn offered_kinds(state: &AppState, user_id: i64) -> AppResult<Vec<&'static str>> {
+    let all = private_forges(state).await?;
+    let connected: Vec<(String,)> = sqlx::query_as("SELECT kind FROM nrzgit_connections WHERE user_id = ?").bind(user_id).fetch_all(&state.db).await?;
+    let nrzgit_default = !default_url(state).await?.is_empty();
+    Ok(KINDS
+        .into_iter()
+        .filter(|k| *k == KIND_GITHUB || all || connected.iter().any(|(c,)| c == k) || (*k == KIND_NRZGIT && nrzgit_default))
+        .collect())
 }
 
 /// Vorgabe-Adresse der Instanz: Einstellung der Verwaltung, sonst Konfiguration.
@@ -610,7 +635,7 @@ pub async fn require(state: &AppState, user_id: i64, kind: Option<&str>) -> AppR
     match (found, kind) {
         (Some(access), _) => Ok(access),
         (None, Some(k)) => Err(AppError::bad(format!("Bitte zuerst {} verbinden (Einstellungen → Git-Plattformen).", forge_name(k)))),
-        (None, None) => Err(AppError::bad("Bitte zuerst nrzGit, luGit oder GitHub verbinden (Einstellungen → Git-Plattformen).")),
+        (None, None) => Err(AppError::bad("Bitte zuerst eine Git-Plattform verbinden (Einstellungen → Git-Plattformen).")),
     }
 }
 
@@ -677,13 +702,13 @@ async fn status(state: &State<AppState>, user: CurrentUser, kind: Option<&str>) 
     Ok(Json(status_of(state, user.id(), parse_kind(kind)?).await?))
 }
 
-/// `GET /nrzgit/connections` – alle Plattformen (nrzGit, luGit, GitHub), verbunden oder nicht.
+/// `GET /nrzgit/connections` – die angebotenen Plattformen ([`offered_kinds`]), verbunden oder nicht.
 #[get("/nrzgit/connections")]
 async fn connections(state: &State<AppState>, user: CurrentUser) -> AppResult<Json<Vec<NrzGitStatus>>> {
     let default_url = default_url(state).await?;
     let mut rows = rows(state, user.id()).await?;
     let mut out = Vec::new();
-    for kind in KINDS {
+    for kind in offered_kinds(state, user.id()).await? {
         out.push(match rows.iter().position(|r| r.6 == kind) {
             Some(i) => status_from(rows.remove(i), &default_url),
             None => status_empty(kind, &default_url),

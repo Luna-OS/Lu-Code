@@ -82,6 +82,22 @@ Projekts – für jede Agent-Art gleich, auch für Subagenten und Bots.
 sieben bleiben; abschaltbar). Zurückspielen: luCode beenden, die Datei als `lucode.db` in den
 Datenordner legen (`lucode.db-wal` und `lucode.db-shm` löschen), starten.
 
+## Git-Plattformen nach Angebot
+
+Eine frische Instanz zeigt und nennt nur GitHub. luGit und nrzGit (selbst gehostet) erscheinen für
+einen Benutzer, sobald er sie verbunden hat – etwa nach dem Umzug von nrzCode –, wenn die Verwaltung
+sie allen anbietet (*Einstellungen → Instanz → Weitere Git-Plattformen anbieten*, Einstellung
+`private_forges`, Vorgabe aus `LUCODE_PRIVATE_FORGES`) oder – nrzGit – eine Vorgabe-Adresse
+hinterlegt ist. Das betrifft allein, was angeboten wird: Verbundene Plattformen arbeiten unabhängig
+davon, und `PUT /nrzgit` nimmt weiter jede der drei an.
+
+- `workspace::nrzgit::offered_kinds(state, user)` ist die eine Stelle für die Regel.
+- `GET /nrzgit/connections` liefert nur die angebotenen Plattformen (verbunden oder nicht).
+- `Me.offeredForges` (`["github"]`, `["lugit", "github"]` …) – die Oberfläche bildet daraus alle
+  Texte, die Plattformen nennen (`parts::forges_text`, `offers_forge`, `project_forge_name`); feste
+  Aufzählungen wie „nrzGit, luGit oder GitHub“ gibt es nicht mehr.
+- `InstanceSettings.privateForges` (`GET/PUT /settings/instance`).
+
 ## Oberfläche
 
 - **Befehlspalette** (`ui/src/pages/workspace/palette.rs`): Strg+K / ⌘K oder die Lupe oben rechts.

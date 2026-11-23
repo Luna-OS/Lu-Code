@@ -30,6 +30,9 @@ impl TestApp {
         let figment = lucode::config::figment()
             .merge(("data_dir", dir.path().to_string_lossy().to_string()))
             .merge(("background", false))
+            // Alle Plattformen anbieten (ausgeliefert zeigt eine frische Instanz nur GitHub –
+            // siehe tests/extras.rs)
+            .merge(("private_forges", true))
             .merge(("preview_port", 0))
             .merge(("log_level", "off"));
         let rocket = lucode::build_with(figment).await.expect("build");

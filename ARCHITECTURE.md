@@ -373,6 +373,18 @@ messages), instructions per user and project (appended to the system hint of eve
 `extras.rs` (instructions editor, backups), `import.rs` (settings section and the hint on the home
 page).
 
+**Git platforms on offer.** A fresh instance shows and names GitHub only; luGit and nrzGit appear
+for a user once connected (e.g. after the move from nrzCode), when the administrator offers them
+(`private_forges`, Settings → Instance) or – nrzGit – when a default address is set.
+`workspace::nrzgit::offered_kinds` is the one place for that rule; `Me::offered_forges` carries it
+to the UI, which builds every text naming platforms from it (`parts::forges_text`). Connected
+platforms work regardless.
+
+**Links leave the app through the shell.** On Windows the app opens addresses with
+`ShellExecuteW`, never through `cmd /C start` (cmd splits at `&` – sign-in links arrived cut
+off), and links coming from the interface only as http/https/mailto (`open_url`): the shell
+would *run* a file or program handed to it.
+
 **Updates** come from the GitHub releases of `Luna-OS/Lu-Code` (`macos/src/updater.rs` reads
 GitHub's and nrzGit's release shapes; `LUCODE_UPDATE_REPO` points it elsewhere). They install
 themselves (`desktop.json`: `autoUpdate`, on by default; switch under Settings → App): a newer

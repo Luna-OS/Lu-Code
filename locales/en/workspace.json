@@ -541,7 +541,6 @@
   "Noch nicht mit nrzGit, luGit oder GitHub verbunden": "Not connected to nrzGit, luGit or GitHub yet",
   "Lege in nrzGit, luGit oder GitHub ein Token an und füge es in den Einstellungen ein – dann erscheinen hier deine Repositories.": "Create a token in nrzGit, luGit or GitHub and paste it in the settings – then your repositories appear here.",
   "Mit nrzGit, luGit oder GitHub verbinden": "Connect to nrzGit, luGit or GitHub",
-  "Mit einem Token aus nrzGit, luGit oder GitHub übernimmst du Repositories als Projekte – und alle Agenten können pushen, Pull Requests und Releases anlegen und Images bauen.": "With a token from nrzGit, luGit or GitHub you add repositories as projects – and all agents can push, open pull requests and releases, and build images.",
   "Bitte zuerst nrzGit, luGit oder GitHub verbinden (Einstellungen → Git-Plattformen).": "Please connect nrzGit, luGit or GitHub first (Settings → Git platforms).",
   "Pull Requests gibt es nur für Projekte aus nrzGit, luGit oder GitHub.": "Pull requests exist only for projects from nrzGit, luGit or GitHub.",
   "GitHub hat das Token abgelehnt.": "GitHub rejected the token.",

@@ -135,7 +135,7 @@ pub async fn create_account(
 async fn sign_in(state: &AppState, cookies: &CookieJar<'_>, user: &User, ua: &str) -> AppResult<Me> {
     let token = session::create(&state.db, user.id, ua).await?;
     session::set_cookie(cookies, token, state.config.cookie_secure);
-    me_json(&state.db, user).await
+    me_json(state, user).await
 }
 
 /// `POST /auth/setup` – Ersteinrichtung: erstes Konto (Administrator).
@@ -240,7 +240,7 @@ async fn logout(state: &State<AppState>, cookies: &CookieJar<'_>) -> AppResult<S
 /// `GET /me` – der angemeldete Benutzer.
 #[get("/me")]
 async fn me(state: &State<AppState>, user: CurrentUser) -> AppResult<Json<Me>> {
-    Ok(Json(me_json(&state.db, &user.0).await?))
+    Ok(Json(me_json(state, &user.0).await?))
 }
 
 /// `PUT /me/profile` – voller Name und E-Mail.
@@ -264,7 +264,7 @@ async fn update_profile(state: &State<AppState>, user: CurrentUser, body: Json<P
         .execute(&state.db)
         .await?;
     let u = db::user_by_id(&state.db, user.id()).await?.ok_or(AppError::NotFound)?;
-    Ok(Json(me_json(&state.db, &u).await?))
+    Ok(Json(me_json(state, &u).await?))
 }
 
 /// `PUT /me/password` – neues Passwort; alle anderen Sitzungen enden.
@@ -632,7 +632,7 @@ async fn put_avatar(state: &State<AppState>, user: CurrentUser, body: Json<Avata
     let ts = now();
     sqlx::query("UPDATE users SET avatar_at = MAX(?, avatar_at + 1), updated_at = ? WHERE id = ?").bind(ts).bind(ts).bind(user.id()).execute(&state.db).await?;
     let u = db::user_by_id(&state.db, user.id()).await?.ok_or(AppError::NotFound)?;
-    Ok(Json(me_json(&state.db, &u).await?))
+    Ok(Json(me_json(state, &u).await?))
 }
 
 /// `DELETE /me/avatar` – eigenes Profilbild entfernen (wieder das Identicon).
@@ -641,7 +641,7 @@ async fn delete_avatar(state: &State<AppState>, user: CurrentUser) -> AppResult<
     let _ = tokio::fs::remove_file(avatar_path(state, user.id())).await;
     sqlx::query("UPDATE users SET avatar_at = 0, updated_at = ? WHERE id = ?").bind(now()).bind(user.id()).execute(&state.db).await?;
     let u = db::user_by_id(&state.db, user.id()).await?.ok_or(AppError::NotFound)?;
-    Ok(Json(me_json(&state.db, &u).await?))
+    Ok(Json(me_json(state, &u).await?))
 }
 
 /// Identicon wie bei GitHub/Forgejo: 5×5 Felder, links-rechts gespiegelt, Farbe aus dem Hash.

@@ -265,7 +265,7 @@ fn WorkspaceCard(status: WorkspaceStatus) -> Element {
                     {tr("Pfad kopieren")}
                 }
                 if !repo_url.is_empty() {
-                    MenuItem { onclick: move |_| open_tab(&repo_url), icons::ExternalLink {} {tr("Repository in nrzGit öffnen")} }
+                    MenuItem { onclick: move |_| open_tab(&repo_url), icons::ExternalLink {} {trf("Repository in {0} öffnen", &[&project_forge_name(s.project_id)])} }
                 }
                 if !s.path.is_empty() {
                     MenuSeparator {}
@@ -379,7 +379,7 @@ fn WorkspaceCard(status: WorkspaceStatus) -> Element {
                         MenuSeparator {}
                         MenuItem { onclick: move |_| pr_open.set(true),
                             icons::GitPullRequest {}
-                            {tr("Pull Request in nrzGit …")}
+                            {trf("Pull Request in {0} …", &[&project_forge_name(s.project_id)])}
                         }
                     }
                     if let Some(pr) = s.pull_request.clone() {

@@ -14,9 +14,9 @@
 
 luCode runs the command line coding agents – **Claude Code, Codex, Gemini CLI, OpenCode, Kilo Code
 and Grok CLI** – and turns their output into one quiet chat: answers in Markdown, work steps
-collapsed into single lines, edits as coloured diffs. Projects come from **luGit, nrzGit or GitHub**;
-every agent gets the platform as an MCP server, so it can push, open pull requests and releases on
-its own. It runs as a native app on Windows and macOS and as a server (Docker).
+collapsed into single lines, edits as coloured diffs. Projects come from **GitHub** (self-hosted
+platforms can be added); every agent gets the platform as an MCP server, so it can push, open pull
+requests and releases on its own. It runs as a native app on Windows and macOS and as a server (Docker).
 
 luCode is the [LunaOS](https://github.com/Luna-OS) edition of
 [nrzCode](https://github.com/nicorenezweers) – same engine, kept compatible, in the **Moon design**
@@ -62,7 +62,7 @@ of luGit, Luma and MoonDisk, with a one-click move from nrzCode and a handful of
 | **Subagents** | An agent (or you, with `/subagents`) starts several agents in parallel, each in its own worktree, and waits for them – with a lineage panel and timers |
 | **`/status` and `/btw`** | Status with an estimated time left as a popup, or side questions in a side chat – both answered by a small model from the transcript, without interrupting the agent |
 | **Composer** | `@` files, `@@` other repositories, `$` skills, `/` commands, images by paste or drag & drop, dictation, agent · account · model · effort picker, queue or interject while the agent works |
-| **Git platforms** | luGit, nrzGit and GitHub side by side: projects from your repositories, worktree per thread, branch switcher, commit / push / pull request, changes with diffs, file tree, editor, terminal |
+| **Git platforms** | GitHub out of the box; the self-hosted luGit and nrzGit appear once they are connected (for instance after the move from nrzCode) or when the administrator offers them. Side by side: projects from your repositories, worktree per thread, branch switcher, commit / push / pull request, changes with diffs, file tree, editor, terminal |
 | **Native CLI** | `</>` swaps the chat for the agent's own CLI – same worktree, account, model and session; switching back is instant |
 | **Team** | Several people, each with their own luCode or nrzCode, work on the same repository: see what the others' agents are doing, and let the agents message, ask and coordinate with each other – through the repository itself, no extra server |
 | **Canvas** | All windows of a workspace – chats, terminals, browsers – on one infinite board with notes, arrows and freehand drawing; agents can read and draw on it |
@@ -80,8 +80,9 @@ of luGit, Luma and MoonDisk, with a one-click move from nrzCode and a handful of
 | **Server** | Docker (below) |
 
 Every installation starts as a **fresh instance**: no accounts, no projects, no git connections and
-no server addresses are built in – you connect your own luGit, nrzGit or GitHub (or move over from
-nrzCode, below).
+no server addresses are built in – you connect your own GitHub (or move over from nrzCode, below).
+A fresh instance shows GitHub only; self-hosted git platforms appear once they are connected or
+switched on under *Settings → Instance*.
 
 The desktop apps sign you in automatically, update themselves from the GitHub releases – downloaded
 in the background, checksum verified, installed when nothing is running – and can be locked with a
@@ -113,10 +114,11 @@ docker run -d --name lucode -p 8510:8510 -p 8511:8511 -v lucode-data:/data \
 
 Open http://localhost:8510 – the first account becomes the administrator. Then:
 
-1. **Settings → Git platforms**: connect luGit (address and a token with the scopes `user` and
-   `repo`), nrzGit (address and a token from nrzGit → Settings → MCP) and/or GitHub (a personal
-   access token: classic with `repo` and `read:org`, or fine-grained with Contents, Pull requests and
-   Administration). Agents get the platform as an MCP server (`lugit`, `nrzgit`, `github`).
+1. **Settings → Git platforms**: connect GitHub (a personal access token: classic with `repo` and
+   `read:org`, or fine-grained with Contents, Pull requests and Administration). Agents get it as
+   the MCP server `github`. For a self-hosted luGit (address and a token with the scopes `user`
+   and `repo`) or nrzGit (address and a token from nrzGit → Settings → MCP), switch on *Settings →
+   Instance → Offer more git platforms* first – then both can be connected next to GitHub.
 2. **Settings → Tools**: install the agents you want.
 3. **Settings → Agents**: add accounts and sign in (terminal in the app) or paste an API key.
 4. Add a project and start a thread.
@@ -131,7 +133,8 @@ you would give a shell on that machine.
 | `LUCODE_PORT` | `8510` | HTTP port |
 | `LUCODE_PREVIEW_PORT` | `8511` | Preview proxy, `0` turns it off |
 | `LUCODE_DATA_DIR` | `./data` (`/data` in Docker) | Database, agent homes, workspaces, installed tools, backups |
-| `LUCODE_NRZGIT_URL` | – | Default nrzGit address for new users |
+| `LUCODE_PRIVATE_FORGES` | `false` | Offer the self-hosted platforms (luGit, nrzGit) to everyone. Otherwise a fresh instance shows GitHub only and they appear once connected; administrators can switch it under *Settings → Instance* |
+| `LUCODE_NRZGIT_URL` | – | Default nrzGit address for new users (also makes nrzGit appear) |
 | `LUCODE_MAX_PARALLEL_RUNS` | `8` | Agents running at the same time |
 | `LUCODE_BIN_<AGENT>` | – | Path to an agent program, e.g. `LUCODE_BIN_CLAUDE` |
 | `LUCODE_COOKIE_SECURE` | `false` | Cookies only over HTTPS |

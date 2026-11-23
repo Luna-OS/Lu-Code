@@ -155,7 +155,8 @@ pub async fn touch_project(db: &SqlitePool, project_id: i64) -> AppResult<()> {
 }
 
 /// `Me` für die Oberfläche (mit Stand der nrzGit-Verbindung).
-pub async fn me_json(db: &SqlitePool, user: &User) -> AppResult<Me> {
+pub async fn me_json(state: &AppState, user: &User) -> AppResult<Me> {
+    let db = &state.db;
     // Geprüfte Verbindungen, nrzGit zuerst; für Links im Browser die öffentliche Adresse
     let conns: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT kind, url, public_url FROM nrzgit_connections WHERE user_id = ? AND verified_at IS NOT NULL \
@@ -182,6 +183,7 @@ pub async fn me_json(db: &SqlitePool, user: &User) -> AppResult<Me> {
         nrzgit_connected: connected,
         nrzgit_url: url,
         forges,
+        offered_forges: super::nrzgit::offered_kinds(state, user.id).await?.into_iter().map(str::to_string).collect(),
     })
 }
 

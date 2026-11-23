@@ -1,7 +1,8 @@
 //! Umzug von nrzCode (Einstellungen → Umzug, nur Administratoren): Die Seite findet den
 //! Datenordner von nrzCode, zeigt, was dort liegt und was davon noch fehlt, lässt wählen, was
-//! mitkommt, und zeigt den Fortschritt. Auf der Startseite weist [`ImportBanner`] einmal darauf
-//! hin, solange noch nichts übernommen wurde.
+//! mitkommt, und zeigt den Fortschritt. Ist der Umzug fertig, lädt die Oberfläche Benutzer,
+//! Projekte, Threads, Agent-Konten und Bots von selbst neu ([`watch_import`]). Auf der Startseite
+//! weist [`ImportBanner`] einmal darauf hin, solange noch nichts übernommen wurde.
 
 use crate::Route;
 use crate::api;
@@ -19,6 +20,36 @@ const DISMISSED: &str = "lu-import-dismissed";
 async fn load_source(path: &str) -> Option<ImportSource> {
     let url = if path.trim().is_empty() { "/import/nrzcode".to_string() } else { format!("/import/nrzcode?path={}", api::enc(path.trim())) };
     api::get::<ImportSource>(&url).await.ok()
+}
+
+/// Wartet schon jemand auf das Ende des laufenden Umzugs? (Einer genügt.)
+static WATCHING: GlobalSignal<bool> = Signal::global(|| false);
+
+/// Auf das Ende des laufenden Umzugs warten und die Oberfläche dann auf den neuen Stand bringen:
+/// Benutzer mit seinen Git-Verbindungen, Projekte, Threads, Agent-Konten und Bots. Läuft im
+/// Wurzel-Scope – auch wenn die Einstellungen inzwischen geschlossen sind. Ohne das kannte die
+/// Oberfläche das Übernommene erst nach einem Neuladen (die Startseite bot weiter „verbinden“
+/// an, die Listen blieben leer).
+fn watch_import() {
+    if *WATCHING.peek() {
+        return;
+    }
+    *WATCHING.write() = true;
+    dioxus::core::spawn_forever(async {
+        loop {
+            gloo_timers::future::TimeoutFuture::new(700).await;
+            match api::get::<ImportStatus>("/import/nrzcode/status").await {
+                Ok(s) if s.is_running() => continue,
+                _ => break,
+            }
+        }
+        crate::state::load_me().await;
+        super::parts::load_projects().await;
+        super::parts::load_threads().await;
+        crate::pages::agents::data::reload_agents().await;
+        crate::state::load_bots().await;
+        *WATCHING.write() = false;
+    });
 }
 
 /// Zahlen als Kacheln; `only_set`: Nullen weglassen.
@@ -60,6 +91,9 @@ pub fn ImportSection() -> Element {
     // Quelle an den üblichen Orten suchen; läuft schon ein Import, seinen Stand zeigen
     use_future(move || async move {
         if let Ok(s) = api::get::<ImportStatus>("/import/nrzcode/status").await {
+            if s.is_running() {
+                watch_import();
+            }
             status.set(s);
         }
         let found = load_source("").await;
@@ -101,7 +135,11 @@ pub fn ImportSection() -> Element {
         o.path = path.peek().trim().to_string();
         spawn(async move {
             match api::post::<ImportStatus, _>("/import/nrzcode", &o).await {
-                Ok(s) => status.set(s),
+                Ok(s) => {
+                    // Am Ende von selbst zeigen, was dazugekommen ist
+                    watch_import();
+                    status.set(s)
+                }
                 Err(e) => toast_error(e),
             }
         });
@@ -160,7 +198,7 @@ pub fn ImportSection() -> Element {
                         div { class: "grid max-w-2xl gap-3 border-t pt-5",
                             p { class: "text-sm font-medium", {tr("Was soll mitkommen?")} }
                             Checkbox { checked: o.accounts, onchange: move |v| opts.write().accounts = v, label: tr("Agent-Konten samt Anmeldung"), hint: tr("Claude Code, Codex, Gemini … mit ihren Home-Ordnern – du musst dich nicht neu anmelden. Nutzt du dasselbe Abo weiter in nrzCode, kann der Anbieter eine der beiden Anmeldungen später abmelden; dann dort einfach neu anmelden.") }
-                            Checkbox { checked: o.connections, onchange: move |v| opts.write().connections = v, label: tr("Git-Verbindungen"), hint: tr("nrzGit, luGit und GitHub mit ihren Zugriffstokens.") }
+                            Checkbox { checked: o.connections, onchange: move |v| opts.write().connections = v, label: tr("Git-Verbindungen"), hint: tr("Die in nrzCode verbundenen Git-Plattformen mit ihren Zugriffstokens.") }
                             Checkbox { checked: o.workspaces, onchange: move |v| opts.write().workspaces = v, label: tr("Projekte und Chats"), hint: tr("Checkouts mit allem Uneingecheckten, Worktrees der Subagenten, Verlauf, Anhänge, Nutzung. Die Sitzungen von Claude Code ziehen mit – Chats lassen sich nahtlos fortsetzen.") }
                             Checkbox { checked: o.extras, onchange: move |v| opts.write().extras = v, label: tr("Bots, Skills, Notizen, Canvas, KI-Ketten, Sprachsteuerung") }
                             Checkbox { checked: o.tools, onchange: move |v| opts.write().tools = v, label: tr("Werkzeuge und Sprachmodelle"), hint: tr("Die in nrzCode installierten Agent-CLIs und Whisper-Modelle – sonst lädt luCode sie bei Bedarf neu.") }

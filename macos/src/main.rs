@@ -759,7 +759,7 @@ fn main() {
                             }
                             "update:notes" => {
                                 if let Some(u) = &updates.available {
-                                    open_external(&u.page_url);
+                                    open_url(&u.page_url);
                                 }
                             }
                             _ => {}
@@ -985,7 +985,7 @@ fn build_webview(
             if is_local(&url) && server_port.lock().unwrap().is_some() {
                 let _ = p_new.send_event(UserEvent::OpenWindow(url));
             } else {
-                open_external(&url);
+                open_url(&url);
             }
             NewWindowResponse::Deny
         })
@@ -1543,15 +1543,49 @@ fn native_notify(title: &str, body: &str) {
     let _ = (title, body);
 }
 
+#[cfg(windows)]
+#[link(name = "shell32")]
+extern "system" {
+    fn ShellExecuteW(hwnd: isize, operation: *const u16, file: *const u16, parameters: *const u16, directory: *const u16, show: i32) -> isize;
+}
+
+/// Adresse im Browser bzw. Datei oder Ordner im Explorer/Finder öffnen.
+///
+/// Unter Windows über die Shell selbst (`ShellExecuteW`) – nicht über `cmd /C start`: cmd liest
+/// `&` als Trennzeichen zwischen Befehlen und schnitt jede Adresse am ersten `&` ab. Bei
+/// Anmelde-Links kam so nur der erste Parameter beim Anbieter an (Google: „Required parameter is
+/// missing: response_type“), die Anmeldung für Gemini war damit nicht möglich.
 fn open_external(target: &str) {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        // start "" <ziel> öffnet Adressen im Browser und Dateien/Ordner im Explorer
-        let _ = std::process::Command::new("cmd").args(["/C", "start", ""]).arg(target).creation_flags(0x0800_0000).spawn();
+        let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let (verb, file) = (wide("open"), wide(target));
+        // Rückgabe über 32 heisst: geöffnet
+        let code = unsafe { ShellExecuteW(0, verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), 1) };
+        if code <= 32 {
+            // Das Ziel selbst nicht ins Protokoll (Anmelde-Links tragen Geheimnisse)
+            tracing::warn!("Öffnen im Browser bzw. Explorer fehlgeschlagen (Code {code})");
+        }
     }
     #[cfg(not(windows))]
     let _ = std::process::Command::new("/usr/bin/open").arg(target).spawn();
+}
+
+/// Ist das eine Adresse fürs Web (bzw. für das Mail-Programm)?
+fn is_web_url(url: &str) -> bool {
+    let u = url.trim_start().to_ascii_lowercase();
+    (u.starts_with("https://") || u.starts_with("http://") || u.starts_with("mailto:")) && !url.chars().any(char::is_control)
+}
+
+/// Link aus der Oberfläche (oder aus einer Antwort aus dem Netz) im Browser öffnen. Nur
+/// Web-Adressen: Die Shell *startet*, was man ihr gibt – ein Link auf ein Programm oder eine
+/// Datei (`file:`, ein Pfad) in der Ausgabe eines Agenten darf darum nie dort ankommen.
+fn open_url(url: &str) {
+    if is_web_url(url) {
+        open_external(url.trim());
+    } else {
+        tracing::warn!("Link nicht geöffnet: keine Web-Adresse");
+    }
 }
 
 /// Datei im Finder bzw. Explorer zeigen.
@@ -1627,4 +1661,24 @@ fn init_logging() -> Option<()> {
         }
     }
     Some(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_web_url;
+
+    #[test]
+    fn only_web_addresses_reach_the_shell() {
+        // Der Anmelde-Link von Google trägt viele `&` – eine ganz normale Web-Adresse
+        assert!(is_web_url(
+            "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=https%3A%2F%2Fcodeassist.google.com%2Fauthcode&access_type=offline&scope=a%20b&state=x&response_type=code&client_id=1.apps.googleusercontent.com"
+        ));
+        assert!(is_web_url("http://example.com"));
+        assert!(is_web_url("HTTPS://EXAMPLE.COM/x"));
+        assert!(is_web_url("mailto:a@example.com"));
+        // Alles, was die Shell als Programm oder Datei starten würde, bleibt draussen
+        for bad in ["file:///C:/Windows/System32/calc.exe", r"C:\Windows\System32\calc.exe", "calc.exe", "javascript:alert(1)", "ms-settings:", "https://a.example/\nb", ""] {
+            assert!(!is_web_url(bad), "{bad}");
+        }
+    }
 }

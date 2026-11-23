@@ -313,3 +313,76 @@ pub fn open_tab(url: &str) {
 pub fn thread_title(t: &ThreadSummary) -> String {
     if t.title.trim().is_empty() { tr("Neuer Thread") } else { t.title.clone() }
 }
+
+// ------------------------------------------------------------------ Git-Plattformen
+
+/// Name einer Plattform, wie er geschrieben wird.
+pub fn forge_name(kind: &str) -> &'static str {
+    match kind {
+        "nrzgit" => "nrzGit",
+        "lugit" => "luGit",
+        "github" => "GitHub",
+        _ => "Git",
+    }
+}
+
+/// Plattformen, die die Oberfläche anbietet und beim Namen nennt (`Me::offered_forges`): GitHub
+/// immer, luGit und nrzGit nur, wenn sie verbunden sind oder die Instanz sie anbietet. Eine
+/// frische Instanz kennt so nur GitHub.
+pub fn offered_forges() -> Vec<String> {
+    let list = crate::state::ME.read().as_ref().map(|m| m.offered_forges.clone()).unwrap_or_default();
+    if list.is_empty() {
+        vec!["github".to_string()]
+    } else {
+        list
+    }
+}
+
+/// Nennt die Oberfläche diese Plattform?
+pub fn offers_forge(kind: &str) -> bool {
+    offered_forges().iter().any(|k| k == kind)
+}
+
+/// Aufzählung mit Bindewort: „A“, „A oder B“, „A, B oder C“.
+fn join_names(names: &[&str], word: &str) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} {word} {last}", rest.join(", ")),
+    }
+}
+
+/// Aufzählung für Texte in der Sprache der Oberfläche (`and`: mit „und“, sonst „oder“).
+pub fn list_text(names: &[&str], and: bool) -> String {
+    join_names(names, &if and { tr("und") } else { tr("oder") })
+}
+
+/// Die angebotenen Plattformen als Aufzählung: „GitHub“, „luGit oder GitHub“, „nrzGit, luGit oder
+/// GitHub“ (`and`: mit „und“).
+pub fn forges_text(and: bool) -> String {
+    let kinds = offered_forges();
+    let names: Vec<&str> = kinds.iter().map(|k| forge_name(k)).collect();
+    list_text(&names, and)
+}
+
+/// Plattform eines Projekts für Texte wie „Pull Request in GitHub“.
+pub fn project_forge_name(project_id: Option<i64>) -> String {
+    let kind = project_id.and_then(|id| PROJECTS.read().get(&id).map(|p| p.forge.clone())).unwrap_or_default();
+    forge_name(&kind).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{forge_name, join_names};
+
+    #[test]
+    fn platform_lists_read_naturally() {
+        assert_eq!(join_names(&[], "oder"), "");
+        // Eine frische Instanz nennt nur GitHub
+        assert_eq!(join_names(&["GitHub"], "oder"), "GitHub");
+        assert_eq!(join_names(&["luGit", "GitHub"], "oder"), "luGit oder GitHub");
+        assert_eq!(join_names(&["nrzGit", "luGit", "GitHub"], "und"), "nrzGit, luGit und GitHub");
+        assert_eq!((forge_name("github"), forge_name("lugit"), forge_name("nrzgit"), forge_name("")), ("GitHub", "luGit", "nrzGit", "Git"));
+    }
+}
+

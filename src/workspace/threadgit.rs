@@ -426,7 +426,7 @@ async fn remove_worktree(state: &State<AppState>, user: CurrentUser, id: i64) ->
 async fn pull_request(state: &State<AppState>, user: CurrentUser, id: i64, body: Json<PullRequestRequest>) -> AppResult<Json<PullRequestRef>> {
     let (t, p) = load(state, user.id(), id).await?;
     let Some(project) = p.clone().filter(|p| p.is_nrzgit()) else {
-        return Err(AppError::bad("Pull Requests gibt es nur für Projekte aus nrzGit, luGit oder GitHub."));
+        return Err(AppError::bad("Pull Requests gibt es nur für Projekte von einer Git-Plattform."));
     };
     let access = nrzgit::require(state, user.id(), Some(project.forge_kind())).await?;
     let dir = git_dir(state, &t, &p).await?;

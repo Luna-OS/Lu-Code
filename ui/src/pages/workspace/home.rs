@@ -1,6 +1,7 @@
 //! Startseite: Begrüssung, Projekt wählen (oder ohne Projekt), Composer für einen neuen Thread,
-//! darunter die letzten Threads und Projekte. Ohne nrzGit-Verbindung steht oben eine deutliche
-//! Karte „Mit nrzGit verbinden“.
+//! darunter die letzten Threads und Projekte. Ohne Verbindung zu einer Git-Plattform steht oben
+//! eine deutliche Karte „Mit … verbinden“ – sie nennt nur die Plattformen, die diese Instanz
+//! anbietet (eine frische: GitHub).
 
 use super::parts::*;
 use crate::Route;
@@ -209,16 +210,20 @@ pub fn Home() -> Element {
     }
 }
 
-/// Deutlicher Hinweis: ohne nrzGit keine Repositories, kein Push, keine Pull Requests.
+/// Deutlicher Hinweis: ohne Git-Plattform keine Repositories, kein Push, keine Pull Requests.
+/// Genannt werden nur die Plattformen, die diese Instanz anbietet – eine frische kennt GitHub;
+/// luGit und nrzGit erscheinen, wenn sie verbunden sind oder die Verwaltung sie einschaltet
+/// (`parts::forges_text`). Nach dem Verbinden und nach dem Umzug von nrzCode verschwindet die Karte.
 #[component]
 pub fn ConnectCard() -> Element {
+    let forges = forges_text(false);
     rsx! {
         div { class: "flex flex-col gap-4 rounded-xl border border-info/40 bg-info/10 p-5 sm:flex-row sm:items-center",
             div { class: "grid size-10 shrink-0 place-items-center rounded-lg bg-info/20 text-info", icons::GitPullRequest { class: "size-5" } }
             div { class: "min-w-0 flex-1",
-                p { class: "font-medium", {tr("Mit nrzGit, luGit oder GitHub verbinden")} }
+                p { class: "font-medium", {trf("Mit {0} verbinden", &[&forges])} }
                 p { class: "mt-1 text-sm text-muted-foreground",
-                    {tr("Mit einem Token aus nrzGit, luGit oder GitHub übernimmst du Repositories als Projekte – und alle Agenten können pushen, Pull Requests und Releases anlegen und Images bauen.")}
+                    {trf("Mit einem Token aus {0} übernimmst du Repositories als Projekte – und alle Agenten können pushen, Pull Requests und Releases anlegen und Images bauen.", &[&forges])}
                 }
             }
             Link { to: Route::Settings { section: "nrzgit".into() }, class: "{crate::components::common::btn(crate::components::common::BTN_PRIMARY)} shrink-0",
@@ -228,3 +233,4 @@ pub fn ConnectCard() -> Element {
         }
     }
 }
+

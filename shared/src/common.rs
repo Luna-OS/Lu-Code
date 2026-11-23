@@ -185,6 +185,11 @@ pub struct Me {
     /// `nrzgit_url` beschreiben die erste davon
     #[serde(default)]
     pub forges: Vec<ForgeRef>,
+    /// Plattformen, die die Oberfläche anbietet und beim Namen nennt ("nrzgit", "lugit",
+    /// "github"): GitHub immer, luGit und nrzGit nur, wenn sie verbunden sind oder die Instanz sie
+    /// anbietet. Eine frische Instanz zeigt so nur GitHub
+    #[serde(default)]
+    pub offered_forges: Vec<String>,
 }
 
 /// Verbundene Git-Plattform eines Benutzers.

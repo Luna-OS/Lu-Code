@@ -274,6 +274,10 @@ pub struct InstanceSettings {
     pub registration_open: bool,
     /// Vorgabe-Adresse von nrzGit für neue Verbindungen
     pub nrzgit_url: String,
+    /// Selbst gehostete Git-Plattformen (luGit, nrzGit) jedem anbieten – sonst erscheinen sie erst,
+    /// wenn sie verbunden sind
+    #[serde(default)]
+    pub private_forges: bool,
     /// Nur Anzeige (aus der Konfiguration)
     #[serde(default)]
     pub max_parallel_runs: i64,

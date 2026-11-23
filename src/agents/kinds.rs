@@ -132,10 +132,14 @@ pub static SPECS: [Spec; 6] = [
             ("pro", "Pro"),
             ("flash", "Flash"),
             ("flash-lite", "Flash Lite"),
+            // Namen, wie sie die Gemini-CLI 0.68 kennt; „Pro“, „Flash“ und „Flash Lite“ oben wählt
+            // die CLI selbst passend zum Konto (auch neuere Stufen, sobald das Konto sie hat)
+            ("gemini-3.1-pro-preview", "Gemini 3.1 Pro (Vorschau)"),
             ("gemini-3-pro-preview", "Gemini 3 Pro (Vorschau)"),
             ("gemini-3-flash-preview", "Gemini 3 Flash (Vorschau)"),
             ("gemini-2.5-pro", "Gemini 2.5 Pro"),
             ("gemini-2.5-flash", "Gemini 2.5 Flash"),
+            ("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
         ],
         efforts: &[],
         auth: &[
@@ -153,7 +157,7 @@ pub static SPECS: [Spec; 6] = [
             },
         ],
         login_command: "gemini",
-        login_help: "Wähle „Login with Google“, öffne den angezeigten Link, melde dich an und füge den Code hier ein. Danach mit „/quit“ beenden.",
+        login_help: "Wähle „Login with Google“ (Eingabetaste), öffne den angezeigten Link, melde dich mit deinem Google-Konto an und füge den Code, den Google danach zeigt, hier im Terminal ein. Danach mit „/quit“ beenden.",
         supports_resume: true,
     },
     Spec {

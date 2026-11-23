@@ -2572,7 +2572,7 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lucode"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "ammonia",
  "argon2",
@@ -2613,7 +2613,7 @@ dependencies = [
 
 [[package]]
 name = "lucode-macos"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "block2",
  "futures",
@@ -2643,7 +2643,7 @@ dependencies = [
 
 [[package]]
 name = "lucode-shared"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "serde",
  "serde_json",

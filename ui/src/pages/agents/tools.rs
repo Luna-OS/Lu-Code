@@ -53,7 +53,7 @@ pub fn ToolsSettings() -> Element {
         div { class: "flex flex-col gap-6",
             Section {
                 title: tr("Werkzeuge"),
-                description: tr("luCode installiert die Agent-CLIs in seinen Datenordner (tools/npm) und sucht Programme zuerst dort, dann im PATH. Fehlt Node.js, lädt luCode es vorher nach tools/node. Die Docker CLI landet in tools/bin – damit können Agenten Images bauen und in die Registry von nrzGit schieben."),
+                description: tr("luCode installiert die Agent-CLIs in seinen Datenordner (tools/npm) und sucht Programme zuerst dort, dann im PATH. Fehlt Node.js, lädt luCode es vorher nach tools/node. Die Docker CLI landet in tools/bin – damit können Agenten Images bauen und in die Registry der Git-Plattform schieben."),
                 actions: rsx! {
                     button { class: "{btn(BTN_OUTLINE)} {BTN_SM}", disabled: checking(), onclick: check_updates,
                         if checking() {

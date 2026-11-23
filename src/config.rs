@@ -25,6 +25,10 @@ pub struct Config {
     pub max_parallel_runs: usize,
     /// Vorgabe für die nrzGit-Adresse (z. B. im Umbrel-Netz), wenn der Benutzer keine einträgt.
     pub nrzgit_url: String,
+    /// Selbst gehostete Git-Plattformen (luGit, nrzGit) jedem anbieten. Ohne das zeigt eine
+    /// frische Instanz nur GitHub; luGit und nrzGit erscheinen erst, wenn sie verbunden sind.
+    /// Die Verwaltung kann es unter Einstellungen → Instanz umstellen.
+    pub private_forges: bool,
     /// Desktop-Modus (macOS-App): Token für die Anmeldung ohne Passwort (`/__desktop/login`).
     /// Leer = aus.
     pub desktop_token: String,
@@ -44,6 +48,7 @@ impl Default for Config {
             git_binary: "git".into(),
             max_parallel_runs: 8,
             nrzgit_url: String::new(),
+            private_forges: false,
             desktop_token: String::new(),
             desktop_user: String::new(),
             desktop_full_name: String::new(),

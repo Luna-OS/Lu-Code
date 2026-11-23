@@ -41,7 +41,7 @@ pub fn UsersSection() -> Element {
         spawn(async move {
             let ask = Ask::new(
                 trf("{0} löschen?", &[&u.username]),
-                tr("Das Konto mit allen Projekten, Threads und Arbeitsordnern wird gelöscht, laufende Agenten werden angehalten. Repositories in nrzGit bleiben."),
+                tr("Das Konto mit allen Projekten, Threads und Arbeitsordnern wird gelöscht, laufende Agenten werden angehalten. Repositories auf den Git-Plattformen bleiben."),
             )
             .confirm(tr("Löschen"))
             .destructive();
@@ -64,7 +64,7 @@ pub fn UsersSection() -> Element {
     rsx! {
         Section {
             title: tr("Benutzer"),
-            description: tr("Jeder Benutzer hat eigene Projekte, Threads, Agent-Konten und eine eigene Verbindung zu nrzGit."),
+            description: tr("Jeder Benutzer hat eigene Projekte, Threads, Agent-Konten und eigene Verbindungen zu Git-Plattformen."),
             actions: rsx! {
                 button { class: "{btn(BTN_PRIMARY)} {BTN_SM}", onclick: move |_| create_open.set(true),
                     icons::UserPlus {}
@@ -282,7 +282,12 @@ fn InstanceForm(settings: InstanceSettings) -> Element {
     let s = settings.clone();
     let mut registration = use_signal(|| s.registration_open);
     let mut url = use_signal(|| s.nrzgit_url.clone());
+    let mut private_forges = use_signal(|| s.private_forges);
     let mut busy = use_signal(|| false);
+    // Die Vorgabe-Adresse von nrzGit gehört zur Instanz, nicht zum eigenen Konto: Das Feld erscheint
+    // nur, wenn die Instanz weitere Plattformen anbietet oder schon eine Adresse eingetragen ist –
+    // nicht schon deshalb, weil der Administrator selbst mit nrzGit verbunden ist
+    let nrzgit = private_forges() || !url().is_empty();
     let submit = move |e: FormEvent| {
         e.prevent_default();
         busy.set(true);
@@ -290,11 +295,15 @@ fn InstanceForm(settings: InstanceSettings) -> Element {
         spawn(async move {
             body.registration_open = registration();
             body.nrzgit_url = url();
+            body.private_forges = private_forges();
             let res = api::put::<InstanceSettings, _>("/settings/instance", &body).await;
             busy.set(false);
             match res {
                 Ok(s) => {
                     url.set(s.nrzgit_url);
+                    private_forges.set(s.private_forges);
+                    // Was angeboten wird, steht im Benutzer – gleich neu laden
+                    crate::state::load_me().await;
                     toast(tr("Einstellungen gespeichert."));
                 }
                 Err(e) => toast_error(e),
@@ -306,8 +315,14 @@ fn InstanceForm(settings: InstanceSettings) -> Element {
         Section { title: tr("Instanz"), description: tr("Gilt für alle Benutzer dieses luCode-Servers."),
             form { class: "grid max-w-xl gap-5", onsubmit: submit,
                 Toggle { checked: registration(), onchange: move |v| registration.set(v), label: tr("Registrierung erlauben – neue Personen dürfen sich selbst ein Konto anlegen") }
-                Field { label: tr("Vorgabe-Adresse von nrzGit"), hint: tr("Steht für neue Verbindungen schon im Formular. Leer = aus der Konfiguration (LUCODE_NRZGIT_URL)."),
-                    input { class: INPUT, r#type: "url", placeholder: "http://umbrel.local:8390", value: "{url}", oninput: move |e| url.set(e.value()) }
+                div { class: "grid gap-1",
+                    Toggle { checked: private_forges(), onchange: move |v| private_forges.set(v), label: tr("Weitere Git-Plattformen anbieten (selbst gehostet)") }
+                    p { class: "text-xs text-muted-foreground", {tr("Ab Werk bietet luCode GitHub an. Eingeschaltet erscheinen unter Einstellungen → Git-Plattformen auch die selbst gehosteten Plattformen zum Verbinden – für alle Benutzer. Schon verbundene Plattformen sind immer da.")} }
+                }
+                if nrzgit {
+                    Field { label: tr("Vorgabe-Adresse von nrzGit"), hint: tr("Steht für neue Verbindungen schon im Formular. Leer = aus der Konfiguration (LUCODE_NRZGIT_URL)."),
+                        input { class: INPUT, r#type: "url", placeholder: "http://umbrel.local:8390", value: "{url}", oninput: move |e| url.set(e.value()) }
+                    }
                 }
                 div {
                     button { r#type: "submit", class: btn(BTN_PRIMARY), disabled: busy(),

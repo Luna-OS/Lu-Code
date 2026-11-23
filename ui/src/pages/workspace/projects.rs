@@ -32,7 +32,7 @@ pub fn Projects() -> Element {
         div { class: "mx-auto w-full max-w-5xl p-4 md:p-6",
             PageHeader {
                 title: tr("Projekte"),
-                description: tr("Repositories aus nrzGit oder lokale Ordner, in denen die Agenten arbeiten."),
+                description: trf("Repositories von {0} oder lokale Ordner, in denen die Agenten arbeiten.", &[&forges_text(false)]),
                 actions: rsx! {
                     button { class: btn(BTN_PRIMARY), onclick: move |_| *ADD_PROJECT.write() = true,
                         icons::FolderPlus {}
@@ -43,7 +43,7 @@ pub fn Projects() -> Element {
             if list.is_empty() {
                 EmptyState {
                     title: tr("Noch keine Projekte"),
-                    description: tr("Übernimm ein Repository aus nrzGit, lege ein neues an oder beginne lokal."),
+                    description: trf("Übernimm ein Repository von {0}, lege ein neues an oder beginne lokal.", &[&forges_text(false)]),
                     icon: rsx! { icons::FolderGit2 {} },
                     button { class: btn(BTN_OUTLINE), onclick: move |_| *ADD_PROJECT.write() = true,
                         icons::FolderPlus {}
@@ -142,7 +142,7 @@ fn ProjectView(id: i64) -> Element {
         spawn(async move {
             let ask = Ask::new(
                 trf("Projekt „{0}“ löschen?", &[&name]),
-                tr("Alle Threads des Projekts und die Arbeitsordner auf dem Server werden gelöscht, laufende Agenten angehalten. Das Repository in nrzGit bleibt erhalten."),
+                tr("Alle Threads des Projekts und die Arbeitsordner auf dem Server werden gelöscht, laufende Agenten angehalten. Das Repository auf der Git-Plattform bleibt erhalten."),
             )
             .confirm(tr("Löschen"))
             .destructive();
@@ -323,7 +323,7 @@ fn ProjectView(id: i64) -> Element {
                 }
             }
         }
-        Modal { open: rename_open, title: tr("Projekt umbenennen"), description: tr("Nur der Name in luCode – das Repository in nrzGit behält seinen Namen."),
+        Modal { open: rename_open, title: tr("Projekt umbenennen"), description: tr("Nur der Name in luCode – das Repository auf der Git-Plattform behält seinen Namen."),
             form { class: "grid gap-4", onsubmit: save_name,
                 Field { label: tr("Name"),
                     input { class: INPUT, autofocus: true, value: "{new_name}", oninput: move |e| new_name.set(e.value()) }
@@ -431,8 +431,8 @@ fn NeedsNrzGit(open: Signal<bool>) -> Element {
     let nav = use_navigator();
     rsx! {
         div { class: "grid gap-3 rounded-lg border border-dashed p-5 text-center text-sm",
-            p { class: "font-medium", {tr("Noch nicht mit nrzGit, luGit oder GitHub verbunden")} }
-            p { class: "text-muted-foreground", {tr("Lege in nrzGit, luGit oder GitHub ein Token an und füge es in den Einstellungen ein – dann erscheinen hier deine Repositories.")} }
+            p { class: "font-medium", {trf("Noch nicht mit {0} verbunden", &[&forges_text(false)])} }
+            p { class: "text-muted-foreground", {trf("Lege in {0} ein Token an und füge es in den Einstellungen ein – dann erscheinen hier deine Repositories.", &[&forges_text(false)])} }
             div {
                 button {
                     class: btn(BTN_PRIMARY),
@@ -441,7 +441,7 @@ fn NeedsNrzGit(open: Signal<bool>) -> Element {
                         nav.push(Route::Settings { section: "nrzgit".into() });
                     },
                     icons::Link {}
-                    {tr("Mit nrzGit, luGit oder GitHub verbinden")}
+                    {trf("Mit {0} verbinden", &[&forges_text(false)])}
                 }
             }
         }
@@ -637,7 +637,7 @@ fn LocalTab(open: Signal<bool>) -> Element {
     };
     rsx! {
         form { class: "grid gap-4", onsubmit: submit,
-            p { class: "text-sm text-muted-foreground", {tr("Ein Git-Repository nur auf diesem Server, ohne nrzGit – zum Ausprobieren. Pushen und Pull Requests gehen erst mit nrzGit.")} }
+            p { class: "text-sm text-muted-foreground", {tr("Ein Git-Repository nur auf diesem Server, ohne Git-Plattform – zum Ausprobieren. Pushen und Pull Requests gehen erst mit einer verbundenen Plattform.")} }
             Field { label: tr("Name"),
                 input { class: INPUT, autofocus: true, required: true, value: "{name}", oninput: move |e| name.set(e.value()) }
             }

@@ -1211,7 +1211,7 @@ fn ProjectMenu() -> Element {
                     spawn(async move {
                         let ask = Ask::new(
                             trf("Projekt „{0}“ löschen?", &[&name]),
-                            tr("Alle Threads des Projekts und die Arbeitsordner auf dem Server werden gelöscht, laufende Agenten angehalten. Das Repository in nrzGit bleibt erhalten."),
+                            tr("Alle Threads des Projekts und die Arbeitsordner auf dem Server werden gelöscht, laufende Agenten angehalten. Das Repository auf der Git-Plattform bleibt erhalten."),
                         )
                         .confirm(tr("Löschen"))
                         .destructive();

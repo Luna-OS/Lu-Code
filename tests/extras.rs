@@ -5,6 +5,8 @@ mod common;
 
 use common::{json, TestApp, TestUser};
 use lucode_shared::extras::{BackupList, Instructions, SearchResults};
+use lucode_shared::workspace::{InstanceSettings, NrzGitStatus};
+use lucode_shared::Me;
 use rocket::http::Status;
 use serde_json::json as j;
 
@@ -169,3 +171,64 @@ async fn sicherungen() {
     assert_eq!(list.backups.iter().map(|x| x.name.clone()).collect::<Vec<_>>(), vec![auto.name]);
     assert!(!file.exists());
 }
+
+/// Eine frische Instanz bietet nur GitHub an; luGit und nrzGit erscheinen, wenn sie verbunden
+/// sind (z. B. nach dem Umzug von nrzCode), die Verwaltung sie einschaltet oder – nrzGit – eine
+/// Vorgabe-Adresse hinterlegt ist.
+#[rocket::async_test]
+async fn frische_instanz_bietet_nur_github_an() {
+    let t = TestApp::new().await;
+    // Wie ausgeliefert (die Tests bieten sonst alle Plattformen an)
+    lucode::db::set_setting(t.db(), "private_forges", "false").await.unwrap();
+    let chefin = t.user("Chefin", true).await;
+    let ben = t.user("Ben", false).await;
+    let kinds = |list: Vec<NrzGitStatus>| list.into_iter().map(|s| s.kind).collect::<Vec<_>>();
+
+    let list: Vec<NrzGitStatus> = get(&t, &chefin, "/api/v1/nrzgit/connections").await;
+    assert_eq!(kinds(list), ["github"]);
+    let me: Me = get(&t, &chefin, "/api/v1/me").await;
+    assert_eq!(me.offered_forges, ["github"]);
+    let inst: InstanceSettings = get(&t, &chefin, "/api/v1/settings/instance").await;
+    assert!(!inst.private_forges);
+
+    // Verbunden (hier wie nach dem Umzug direkt eingetragen): die Plattform ist für diesen Benutzer da
+    let now = lucode::db::now();
+    sqlx::query("INSERT INTO nrzgit_connections (user_id, kind, url, token, username, verified_at, created_at, updated_at) VALUES (?, 'lugit', 'http://git.example:8430', 'lgt_x', 'chefin', ?, ?, ?)")
+        .bind(chefin.id)
+        .bind(now)
+        .bind(now)
+        .bind(now)
+        .execute(t.db())
+        .await
+        .unwrap();
+    let list: Vec<NrzGitStatus> = get(&t, &chefin, "/api/v1/nrzgit/connections").await;
+    assert_eq!(kinds(list), ["lugit", "github"]);
+    let me: Me = get(&t, &chefin, "/api/v1/me").await;
+    assert_eq!(me.offered_forges, ["lugit", "github"]);
+    // … für andere nicht
+    let list: Vec<NrzGitStatus> = get(&t, &ben, "/api/v1/nrzgit/connections").await;
+    assert_eq!(kinds(list), ["github"]);
+
+    // Vorgabe-Adresse für nrzGit: Diese Instanz arbeitet mit nrzGit
+    let put = |body: serde_json::Value| {
+        let (client, cookie) = (&t.client, chefin.cookie.clone());
+        async move { client.put("/api/v1/settings/instance").private_cookie(cookie).header(json()).body(body.to_string()).dispatch().await.status() }
+    };
+    assert_eq!(put(j!({ "registrationOpen": false, "nrzgitUrl": "http://git.example:8390", "privateForges": false })).await, Status::Ok);
+    let list: Vec<NrzGitStatus> = get(&t, &ben, "/api/v1/nrzgit/connections").await;
+    assert_eq!(kinds(list), ["nrzgit", "github"]);
+
+    // Die Verwaltung bietet die selbst gehosteten Plattformen allen an
+    assert_eq!(put(j!({ "registrationOpen": false, "nrzgitUrl": "", "privateForges": true })).await, Status::Ok);
+    let inst: InstanceSettings = get(&t, &chefin, "/api/v1/settings/instance").await;
+    assert!(inst.private_forges && inst.nrzgit_url.is_empty());
+    let me: Me = get(&t, &ben, "/api/v1/me").await;
+    assert_eq!(me.offered_forges, ["nrzgit", "lugit", "github"]);
+    // … und wieder nicht
+    assert_eq!(put(j!({ "registrationOpen": false, "nrzgitUrl": "", "privateForges": false })).await, Status::Ok);
+    let me: Me = get(&t, &ben, "/api/v1/me").await;
+    assert_eq!(me.offered_forges, ["github"]);
+    let me: Me = get(&t, &chefin, "/api/v1/me").await;
+    assert_eq!(me.offered_forges, ["lugit", "github"], "Verbundenes bleibt");
+}
+
