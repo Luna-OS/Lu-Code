@@ -61,6 +61,12 @@ impl Config {
         self.data_dir.join("lucode.db")
     }
 
+    /// Läuft der Server in der Desktop-App (Windows, macOS)? Dann sind Server, Agenten und der
+    /// Browser des Benutzers auf demselben Rechner.
+    pub fn is_desktop(&self) -> bool {
+        !self.desktop_token.is_empty()
+    }
+
     /// `<data>/accounts/<id>` – je Agent-Konto ein eigenes Home (`home/`).
     pub fn accounts_dir(&self) -> PathBuf {
         self.data_dir.join("accounts")

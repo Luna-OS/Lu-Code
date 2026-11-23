@@ -11,9 +11,12 @@
 #
 # Ergebnis in dist-windows/:
 #   luCode-<version>-Setup.exe  Installer (Startmenü, Deinstallieren; braucht makensis: brew install makensis)
-#   luCode-<version>-x64.zip    ohne Installer (luCode.exe, entpacken und starten)
-#   luCode-<version>-x64.exe    für die automatischen Updates der installierten App
+#   luCode-<version>-x64.zip    ohne Installer (luCode.exe, entpacken und starten) – auch für die
+#                               automatischen Updates der installierten App
 #   SHA256SUMS
+# Bewusst keine einzelne luCode-<version>-x64.exe mehr: Apps bis 1.1.1 nähmen sie fürs Update und
+# setzten statt des Programms JSON ein (siehe macos/src/updater.rs). Ohne sie melden diese Apps nur,
+# dass keine passende Datei da ist.
 # Veröffentlichen: scripts/release.sh github|lugit|nrzgit|all (prüft vorher mit scripts/check-clean.sh)
 set -eu
 cd "$(dirname "$0")/.."
@@ -69,9 +72,10 @@ else
   # Windows ohne zip: bsdtar des Systems schreibt ZIP mit /-Pfaden
   (cd "$out" && "${SYSTEMROOT:-C:/Windows}/System32/tar.exe" -a -c -f "luCode-$version-x64.zip" luCode)
 fi
-cp "$out/luCode/luCode.exe" "$out/luCode-$version-x64.exe"
+# Frische Instanz: Im Programm darf nichts von dieser Umgebung stehen (private Adressen, Tokens)
+sh scripts/check-clean.sh "$out/luCode/luCode.exe"
 # Installer (NSIS). Der Name enthält bewusst kein „x64“: Apps bis 1.0.28 nehmen fürs Update die
-# erste EXE mit „x64“ im Namen – das muss das Programm bleiben, nicht der Installer.
+# erste EXE mit „x64“ im Namen – das darf nie der Installer sein.
 if command -v makensis >/dev/null; then
   abs=$(pwd)/$out
   # Unter Windows erwartet makensis Windows-Pfade und „/D“ statt „-D“ stört Git Bash nicht
@@ -82,9 +86,7 @@ else
 fi
 rm -rf "$out/luCode"
 if command -v shasum >/dev/null; then sum="shasum -a 256"; else sum=sha256sum; fi
-(cd "$out" && $sum luCode-*.zip luCode-*.exe | sed 's/ \*/  /' > SHA256SUMS)
-# Frische Instanz: In den Programmen darf nichts von dieser Umgebung stehen (private Adressen, Tokens)
-sh scripts/check-clean.sh "$out"/luCode-*.exe
+(cd "$out" && $sum luCode-*.zip $(ls luCode-*-Setup.exe 2>/dev/null) | sed 's/ \*/  /' > SHA256SUMS)
 echo "Fertig: $out/luCode-$version-x64.zip ($(du -h "$out/luCode-$version-x64.zip" | cut -f1))"
-echo "        $out/luCode-$version-x64.exe"
 [ -f "$out/luCode-$version-Setup.exe" ] && echo "        $out/luCode-$version-Setup.exe"
+true

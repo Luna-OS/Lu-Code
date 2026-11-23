@@ -818,11 +818,17 @@ fn main() {
                     } else if let Some((u, file)) = updates.ready.take() {
                         updater::clear_pending();
                         match updater::install(&file) {
-                            Ok(Installed::Replaced(target)) => {
-                                tracing::info!("Update {} installiert, Neustart", u.version);
-                                updater::relaunch_after_exit(&target);
-                                quit(control_flow);
-                            }
+                            Ok(Installed::Replaced(target)) => match updater::relaunch_or_rollback(&target) {
+                                Ok(()) => {
+                                    tracing::info!("Update {} installiert, Neustart", u.version);
+                                    quit(control_flow);
+                                }
+                                Err(e) => {
+                                    tracing::error!("Update {}: {e}", u.version);
+                                    send_update_state(&main_window, &updates);
+                                    status(&main_window, "Update fehlgeschlagen", &e, true);
+                                }
+                            },
                             Ok(Installed::OpenedDmg(text)) => {
                                 send_update_state(&main_window, &updates);
                                 status(&main_window, "Update bereit", &text, false);
@@ -838,11 +844,17 @@ fn main() {
                 UserEvent::Downloaded(Ok(dmg)) => {
                     status(&main_window, "Update wird installiert …", "luCode startet gleich neu.", false);
                     match updater::install(&dmg) {
-                        Ok(Installed::Replaced(bundle)) => {
-                            tracing::info!("Update installiert, Neustart");
-                            updater::relaunch_after_exit(&bundle);
-                            quit(control_flow);
-                        }
+                        Ok(Installed::Replaced(bundle)) => match updater::relaunch_or_rollback(&bundle) {
+                            Ok(()) => {
+                                tracing::info!("Update installiert, Neustart");
+                                quit(control_flow);
+                            }
+                            Err(e) => {
+                                tracing::error!("Update: {e}");
+                                updates.busy = false;
+                                status(&main_window, "Update fehlgeschlagen", &e, true);
+                            }
+                        },
                         Ok(Installed::OpenedDmg(text)) => {
                             updates.busy = false;
                             status(&main_window, "Update bereit", &text, false);
@@ -1391,6 +1403,15 @@ fn start_download(
     let Some(u) = updates.available.clone() else {
         return;
     };
+    // Ohne Prüfsumme setzt luCode nichts ein (`updater::download`): Die Release-Seite öffnen, dort
+    // wird von Hand installiert
+    if u.sha256.is_none() {
+        if !silent {
+            open_url(&u.page_url);
+            status(main, "Bitte von Hand installieren", "Dieses Release nennt keine Prüfsumme – die Release-Seite ist im Browser geöffnet.", false);
+        }
+        return;
+    }
     if updates.busy {
         // Lädt schon still, und der Benutzer will es jetzt: Fortschritt zeigen, danach gleich
         // installieren
