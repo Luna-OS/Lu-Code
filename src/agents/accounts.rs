@@ -387,13 +387,29 @@ async fn login(state: &State<AppState>, user: CurrentUser, id: i64) -> AppResult
         return Err(AppError::bad(format!("{} ist nicht installiert (Einstellungen → Werkzeuge).", r.kind().name())));
     }
     ensure_home(state, id).await?;
-    let mut extra = Vec::new();
-    if r.kind() == AgentKind::Gemini {
-        // Google-Anmeldung ohne Browser auf dem Server: Link anzeigen, Code einfügen
-        extra.push(("NO_BROWSER".to_string(), "true".to_string()));
-    }
+    let (extra, help) = login_env(state.config.is_desktop(), r.kind(), s.login_help);
     let info = terminals::open_for_account(state, user.id(), &r, s.login_command, extra).await?;
-    Ok(Json(LoginSession { terminal: info, command: s.login_command.into(), help: s.login_help.into() }))
+    Ok(Json(LoginSession { terminal: info, command: s.login_command.into(), help: help.into() }))
+}
+
+/// Anmeldehilfe für Gemini in der Desktop-App (die CLI öffnet den Browser selbst).
+const GEMINI_DESKTOP_HELP: &str = "Wähle „Login with Google“ (Eingabetaste) und bestätige mit der Eingabetaste: Dein Browser öffnet die Anmeldung bei Google. Melde dich dort an – das Terminal meldet danach „Authentication succeeded“, einen Code musst du nicht abtippen. Danach mit „/quit“ beenden.";
+
+/// Zusätzliche Umgebung und Hilfetext für das Anmelde-Terminal eines Agenten.
+///
+/// Gemini: In der Desktop-App öffnet die CLI die Google-Anmeldung selbst im Browser dieses
+/// Rechners (unter Windows über PowerShell, mit der ganzen Adresse) und bekommt die Antwort über
+/// `127.0.0.1` zurück. Mit `NO_BROWSER` musste der lange Anmelde-Link (rund 700 Zeichen) dagegen
+/// erst durchs Terminal – unter Windows über ConPTY, das die Ausgabe Zeile für Zeile neu zeichnet
+/// und umbricht. Unter Windows kam er so auch mit 1.1.1 noch abgeschnitten im Browser an (Google:
+/// „Required parameter is missing: response_type“). Nur auf einem Server (Docker), wo der Browser
+/// auf einem anderen Rechner läuft, bleibt es bei Link anzeigen und Code einfügen.
+fn login_env(desktop: bool, kind: AgentKind, help: &'static str) -> (Vec<(String, String)>, &'static str) {
+    match kind {
+        AgentKind::Gemini if desktop => (Vec::new(), GEMINI_DESKTOP_HELP),
+        AgentKind::Gemini => (vec![("NO_BROWSER".to_string(), "true".to_string())], help),
+        _ => (Vec::new(), help),
+    }
 }
 
 /// Status eines Kontos prüfen und speichern: "ok" | "login_required" | "error".
@@ -500,5 +516,23 @@ mod tests {
         assert_eq!(super::secret_hint("sk-ant-api03-abcdefghijklmnop"), "sk-…mnop");
         assert_eq!(super::secret_hint("abcdefghijklmnopqrstuvwxyz"), "abc…wxyz");
         assert_eq!(super::secret_hint("short"), "…");
+    }
+
+    #[test]
+    fn gemini_login_opens_the_browser_only_in_the_app() {
+        use lucode_shared::AgentKind;
+        let has_no_browser = |env: &[(String, String)]| env.iter().any(|(k, v)| k == "NO_BROWSER" && v == "true");
+        // Desktop-App: die CLI öffnet die Anmeldung selbst, kein Link durchs Terminal
+        let (env, help) = super::login_env(true, AgentKind::Gemini, "server");
+        assert!(!has_no_browser(&env));
+        assert_eq!(help, super::GEMINI_DESKTOP_HELP);
+        // Server: Link anzeigen, Code einfügen
+        let (env, help) = super::login_env(false, AgentKind::Gemini, "server");
+        assert!(has_no_browser(&env));
+        assert_eq!(help, "server");
+        // Andere Agenten bleiben, wie sie sind
+        let (env, help) = super::login_env(true, AgentKind::Claude, "claude");
+        assert!(env.is_empty());
+        assert_eq!(help, "claude");
     }
 }

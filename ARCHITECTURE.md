@@ -385,6 +385,13 @@ platforms work regardless.
 off), and links coming from the interface only as http/https/mailto (`open_url`): the shell
 would *run* a file or program handed to it.
 
+**Gemini signs in through the browser itself in the app.** The login terminal of a Gemini account
+(`accounts::login_env`) sets `NO_BROWSER=true` only on a server: there the browser runs on another
+machine, so the CLI shows the link and asks for the code. In the desktop app the CLI opens Google's
+sign-in in the local browser (on Windows via PowerShell with the whole address) and receives the
+answer on `127.0.0.1` – the long sign-in link never has to survive the terminal (on Windows
+ConPTY redraws and rewraps it; it arrived cut off: “Required parameter is missing: response_type”).
+
 **Updates** come from the GitHub releases of `Luna-OS/Lu-Code` (`macos/src/updater.rs` reads
 GitHub's and nrzGit's release shapes; `LUCODE_UPDATE_REPO` points it elsewhere). They install
 themselves (`desktop.json`: `autoUpdate`, on by default; switch under Settings → App): a newer
@@ -396,6 +403,17 @@ script reports as `front:1|0`: somebody may be reading) –, when the app quits,
 (`updater::install_pending`, before anything runs). Just before restarting, the app tells the
 interface (`installing`), which remembers the open page (`lu-resume`) and reopens it afterwards.
 Without a checksum in the release, or where the program cannot replace itself
-(`updater::can_self_replace`), the notice with a button stays. States for the sidebar row
+(`updater::can_self_replace`), the notice with a button stays – and without a checksum the button
+opens the release page: nothing is installed that the release's `SHA256SUMS` does not vouch for.
+
+On Windows the app loads `luCode-<version>-x64.zip` (`browser_download_url` – GitHub's `url` is the
+API address and answers with JSON), unpacks `luCode.exe` next to itself as `luCode.new.exe`,
+checks that it is a complete Windows program for its architecture (`MZ`, PE header, machine) and
+only then swaps (`luCode.exe` → `luCode.old.exe`, the new one in its place). If the new version does
+not start, the old one is put back (`updater::relaunch_or_rollback`). Releases carry no single
+`luCode-<version>-x64.exe` any more (`scripts/windows.sh`, refused by `scripts/release.sh`): apps up
+to 1.1.1 took GitHub's `url`, loaded JSON without a checksum and installed it as `luCode.exe`
+(“unsupported 16-bit application”); without such a file they only report that the release has
+nothing for them. States for the sidebar row
 (`ui/src/pages/workspace/update.rs`): `available`, `downloading`, `progress`, `ready`,
 `installing`, `current`, `error`.

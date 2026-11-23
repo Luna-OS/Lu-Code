@@ -1,0 +1,108 @@
+# luCode für Windows bauen und als Release v<version> auf GitHub veröffentlichen.
+#
+# Läuft bei jedem Push auf den Code-Branch: Gibt es für die Version in Cargo.toml noch kein Release,
+# baut er mit scripts/windows.sh (Querbau mit mingw-w64, wie dort beschrieben) Installer, ZIP und
+# SHA256SUMS und veröffentlicht sie mit scripts/release.sh – den Text nimmt er aus
+# docs/release-notes/<version>.md, falls vorhanden. Bei Pull Requests wird nur gebaut (Probe, die
+# Dateien hängen am Lauf). Von Hand: „Run workflow“.
+#
+# Für macOS baut weiter scripts/macos.sh auf einem Mac.
+name: Release (Windows)
+
+on:
+  push:
+    branches: [lucode-1.0.0]
+  pull_request:
+    branches: [lucode-1.0.0]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Wie im Dockerfile
+  RUST_VERSION: "1.98.0"
+  DX_VERSION: "0.7.10"
+  CARGO_TERM_COLOR: never
+
+jobs:
+  windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version und Release
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$version gibt es schon."
+            exists=1
+          else
+            exists=0
+          fi
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+          # Bauen: bei Pull Requests immer (Probe), sonst nur für eine neue Version
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] || [ "$exists" = 0 ]; then build=1; else build=0; fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+      - name: Werkzeuge
+        if: steps.v.outputs.build == '1'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 nsis zip rsync
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-unknown --target x86_64-pc-windows-gnu
+          rustup default "$RUST_VERSION"
+
+      - name: Cache (Cargo-Register, Dioxus-CLI)
+        if: steps.v.outputs.build == '1'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin/dx
+          key: cargo-${{ env.RUST_VERSION }}-dx${{ env.DX_VERSION }}-${{ hashFiles('Cargo.lock', 'macos/Cargo.lock', 'ui/Cargo.lock') }}
+          restore-keys: cargo-${{ env.RUST_VERSION }}-dx${{ env.DX_VERSION }}-
+
+      - name: Dioxus-CLI
+        if: steps.v.outputs.build == '1'
+        run: |
+          if ! dx --version 2>/dev/null | grep -q "$DX_VERSION"; then
+            cargo install dioxus-cli --version "$DX_VERSION" --locked --force
+          fi
+          dx --version
+
+      - name: Bauen (scripts/windows.sh)
+        if: steps.v.outputs.build == '1'
+        run: |
+          # Die Skripte rufen sich gegenseitig auf; im Repository fehlt ihnen das Ausführungsrecht
+          chmod +x scripts/*.sh
+          scripts/windows.sh
+
+      - name: Dateien am Lauf
+        if: steps.v.outputs.build == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: luCode-${{ steps.v.outputs.version }}-windows
+          path: dist-windows/
+          retention-days: 14
+
+      - name: Veröffentlichen (scripts/release.sh)
+        if: github.event_name != 'pull_request' && steps.v.outputs.exists == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TARGET: ${{ github.sha }}
+        run: |
+          notes="docs/release-notes/${{ steps.v.outputs.version }}.md"
+          if [ -f "$notes" ]; then export NOTES="$notes"; fi
+          sh scripts/release.sh github

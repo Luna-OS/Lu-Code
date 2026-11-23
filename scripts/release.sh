@@ -43,6 +43,14 @@ for d in dist-windows dist-macos; do
   done
 done
 [ -n "$files" ] || { echo "Keine Dateien für $version in dist-windows/ oder dist-macos/ – zuerst scripts/windows.sh bzw. scripts/macos.sh" >&2; exit 1; }
+# Keine einzelne EXE ausser dem Installer: Apps bis 1.1.1 nähmen sie fürs Update, luden bei GitHub
+# aber JSON statt der Datei und setzten das als luCode.exe ein (siehe macos/src/updater.rs)
+for f in $files; do
+  case "$(basename "$f")" in
+    *-Setup.exe) ;;
+    *.exe|*.EXE) echo "$(basename "$f"): keine einzelne EXE veröffentlichen – Apps bis 1.1.1 zerstörten sich damit beim Update. Nur ZIP und Setup.exe (scripts/windows.sh)." >&2; exit 1 ;;
+  esac
+done
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 : > "$work/SHA256SUMS"
