@@ -61,6 +61,20 @@ pub fn get(state: &AppState) -> Arc<Runtime> {
         .clone()
 }
 
+/// Läuft in diesem Prozess gerade etwas, das ein Neustart abbräche? Zählt laufende (auch
+/// wartende) Agenten und Installationen von Werkzeugen über alle Instanzen. Die App installiert
+/// ein geladenes Update erst, wenn hier nichts mehr läuft.
+pub fn busy() -> usize {
+    let all = RUNTIMES.lock().unwrap_or_else(|e| e.into_inner());
+    all.values()
+        .map(|r| {
+            let runs = r.active.lock().unwrap_or_else(|e| e.into_inner()).len();
+            let jobs = r.jobs.lock().unwrap_or_else(|e| e.into_inner()).values().filter(|j| !j.done.load(Ordering::Relaxed)).count();
+            runs + jobs
+        })
+        .sum()
+}
+
 impl Runtime {
     /// Port des eigenen Servers (für `http://127.0.0.1:<port>/mcp`).
     pub fn port(&self) -> u16 {

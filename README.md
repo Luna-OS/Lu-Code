@@ -28,11 +28,16 @@ of luGit, Luma and MoonDisk, with a one-click move from nrzCode and a handful of
 |---|---|
 | **Moon design** | Night sky with twinkling stars, glass panels, lavender accent – or the day theme, or like the system. Six accent colours (lavender, mint, sky, axolotl, gold, peach) tint buttons, borders, selection and the glow in the sky. Frosted window glass stays available as an option |
 | **Move from nrzCode** | *Settings → Move from nrzCode* finds your nrzCode and brings **everything** over: agent accounts with their sign-ins, git connections, projects with checkouts, uncommitted work and the subagents' worktrees, chats with history, attachments, usage, bots, skills, notes, canvas boards, AI chains, tools and speech models. Claude Code's sessions move too, so chats continue seamlessly. nrzCode stays untouched; repeat the move any time – only new things are added |
+| **Live** | Watch every working agent at once: one tile per agent and subagent with its **text** (the answers as they stream in) and its **CLI** (commands with their output, files read and edited, searches, tools – like a terminal). Both, text only or CLI only; the counter in the top bar shows how many are working. Subagent cards and the lineage panel say what each one is doing right now |
+| **Updates by themselves** | The desktop apps download a new version in the background, verify its checksum and install it in a quiet moment – no agent working, nobody typing – or when you quit, or at the next start. The page you had open is back afterwards. *Settings → App* turns it off |
 | **Search everything** | `Ctrl+K` / `⌘K` opens the command palette: chats, projects, commands – and a full-text search through the messages of all chats |
 | **Your instructions** | *Settings → Instructions*: what every agent should know on every run (language, style, tools, taboos) – plus instructions per project on the project page. They are part of the system hint for Claude Code, Codex, Gemini … alike |
 | **Export** | Right-click a chat → *Export as Markdown* |
 | **Backups** | A consistent snapshot of the database every day (the last seven are kept), or on demand under *Settings → Instance* – download included |
 | **Side by side** | Own data folder (`%APPDATA%\luCode`), own ports (8510/8511, the app 18510/18511) and own branch prefix (`lu/…`): luCode and nrzCode run next to each other. Teams work across both – the shared state lives in the same git ref |
+
+<img src="docs/screenshots/live.png" alt="Live view: four agents at work – each tile shows the agent's text on top and its CLI below" width="100%">
+<p><b>Live – every agent at a glance.</b> One tile per working agent and subagent: what it says on top, what it runs below – commands with their output, the files it reads and edits.</p>
 
 <table>
 <tr>
@@ -78,9 +83,10 @@ Every installation starts as a **fresh instance**: no accounts, no projects, no 
 no server addresses are built in – you connect your own luGit, nrzGit or GitHub (or move over from
 nrzCode, below).
 
-The desktop apps sign you in automatically, update themselves from the GitHub releases (checksums
-verified) and can be locked with a 6-digit code (*Settings → App*). Data lives in `%APPDATA%\luCode`
-(Windows) or `~/Library/Application Support/luCode` (macOS).
+The desktop apps sign you in automatically, update themselves from the GitHub releases – downloaded
+in the background, checksum verified, installed when nothing is running – and can be locked with a
+6-digit code (*Settings → App*). Data lives in `%APPDATA%\luCode` (Windows) or
+`~/Library/Application Support/luCode` (macOS).
 
 ### Moving from nrzCode
 
@@ -163,6 +169,6 @@ over. What luCode adds on the server lives in its own modules (`src/import`, `sr
 AGPL-3.0-or-later, like nrzCode, which luCode is based on – thanks to its author for building it
 in the open. luCode is a modified version of nrzCode 1.0.36 (changes by LunaOS since November 2026:
 name and identifiers, the Moon design, the move from nrzCode, search, instructions, export, backups,
-release tooling). The source of this modified version is this repository; every release carries
+the live view, updates that install themselves, release tooling). The source of this modified version is this repository; every release carries
 the source of exactly that version under its tag. UI components adapted from
 [rust-ui](https://github.com/rust-ui/ui) (MIT), fonts: see `static/fonts/LICENSE`.

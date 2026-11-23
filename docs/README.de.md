@@ -29,11 +29,16 @@ obendrauf.
 |---|---|
 | **Moon-Design** | Nachthimmel mit funkelnden Sternen, Glas-Flächen, Lavendel-Akzent – oder das Thema Tag, oder wie das System. Sechs Akzentfarben (Lavendel, Mint, Himmel, Axolotl, Gold, Pfirsich) färben Knöpfe, Ränder, Auswahl und den Schein am Himmel. Das Milchglas-Fenster bleibt als Option |
 | **Umzug von nrzCode** | *Einstellungen → Umzug von nrzCode* findet dein nrzCode und holt **alles** herüber: Agent-Konten samt Anmeldung, Git-Verbindungen, Projekte mit Checkouts, Uneingechecktem und den Worktrees der Subagenten, Chats mit Verlauf, Anhänge, Nutzung, Bots, Skills, Notizen, Canvas, KI-Ketten, Werkzeuge und Sprachmodelle. Die Sitzungen von Claude Code ziehen mit – Chats gehen nahtlos weiter. nrzCode bleibt unberührt; der Umzug lässt sich jederzeit wiederholen, dann kommt nur Neues dazu |
+| **Live** | Allen arbeitenden Agenten zugleich zusehen: je Agent und Subagent eine Kachel mit seinem **Text** (die Antworten, während sie entstehen) und seinem **CLI** (Befehle mit Ausgabe, gelesene und bearbeitete Dateien, Suchen, Werkzeuge – wie in einem Terminal). Beides, nur Text oder nur CLI; der Zähler oben zeigt, wie viele gerade arbeiten. Die Karten der Subagenten und der Stammbaum sagen, was jeder gerade tut |
+| **Updates von selbst** | Die Desktop-Apps laden eine neue Version im Hintergrund, prüfen ihre Prüfsumme und installieren sie in einem ruhigen Moment – kein Agent arbeitet, niemand tippt – oder beim Beenden bzw. beim nächsten Start. Danach steht dieselbe Seite wieder da. Abschaltbar unter *Einstellungen → App* |
 | **Alles durchsuchen** | `Strg+K` / `⌘K` öffnet die Befehlspalette: Chats, Projekte, Befehle – und eine Volltextsuche durch die Nachrichten aller Chats |
 | **Eigene Anweisungen** | *Einstellungen → Anweisungen*: was jeder Agent bei jedem Lauf wissen soll (Sprache, Stil, Werkzeuge, Tabus) – dazu Anweisungen je Projekt auf der Projektseite. Sie stehen im Systemhinweis, für Claude Code, Codex, Gemini … gleichermassen |
 | **Export** | Rechtsklick auf einen Chat → *Als Markdown exportieren* |
 | **Sicherungen** | Täglich ein in sich stimmiges Abbild der Datenbank (die letzten sieben bleiben) oder auf Knopfdruck unter *Einstellungen → Instanz* – samt Herunterladen |
 | **Nebeneinander** | Eigener Datenordner (`%APPDATA%\luCode`), eigene Ports (8510/8511, die App 18510/18511) und eigener Branch-Präfix (`lu/…`): luCode und nrzCode laufen nebeneinander. Teams arbeiten über beide hinweg – der gemeinsame Stand liegt in derselben Git-Referenz |
+
+<img src="screenshots/live.png" alt="Live-Ansicht: vier Agenten bei der Arbeit – jede Kachel zeigt oben den Text des Agenten und unten sein CLI" width="100%">
+<p><b>Live – alle Agenten auf einen Blick.</b> Je arbeitendem Agenten und Subagenten eine Kachel: oben, was er sagt, unten, was er ausführt – Befehle mit ihrer Ausgabe, die Dateien, die er liest und bearbeitet.</p>
 
 <table>
 <tr>
@@ -79,9 +84,10 @@ Jede Installation beginnt als **frische Instanz**: Es sind keine Konten, keine P
 Git-Verbindungen und keine Server-Adressen eingebaut – du verbindest dein eigenes luGit, nrzGit
 oder GitHub (oder ziehst von nrzCode um, siehe unten).
 
-Die Desktop-Apps melden dich von selbst an, aktualisieren sich aus den GitHub-Releases (Prüfsummen
-geprüft) und lassen sich mit einem 6-stelligen Code sperren (*Einstellungen → App*). Die Daten
-liegen in `%APPDATA%\luCode` (Windows) bzw. `~/Library/Application Support/luCode` (macOS).
+Die Desktop-Apps melden dich von selbst an, aktualisieren sich aus den GitHub-Releases – im
+Hintergrund geladen, Prüfsumme geprüft, installiert, wenn gerade nichts läuft – und lassen sich mit
+einem 6-stelligen Code sperren (*Einstellungen → App*). Die Daten liegen in `%APPDATA%\luCode`
+(Windows) bzw. `~/Library/Application Support/luCode` (macOS).
 
 ### Umzug von nrzCode
 
@@ -166,6 +172,6 @@ Modulen (`src/import`, `src/extras`).
 AGPL-3.0-or-later, wie nrzCode, auf dem luCode aufbaut – danke an seinen Autor, dass es offen
 entsteht. luCode ist eine geänderte Fassung von nrzCode 1.0.36 (Änderungen von LunaOS seit November
 2026: Name und Bezeichner, das Moon-Design, der Umzug von nrzCode, Suche, Anweisungen, Export,
-Sicherungen, Werkzeuge fürs Veröffentlichen). Der Quelltext dieser geänderten Fassung ist dieses
+Sicherungen, die Live-Ansicht, Updates von selbst, Werkzeuge fürs Veröffentlichen). Der Quelltext dieser geänderten Fassung ist dieses
 Repository; zu jedem Release gehört der Quelltext genau dieser Version unter seinem Tag. Bausteine der Oberfläche
 nach [rust-ui](https://github.com/rust-ui/ui) (MIT), Schriften: siehe `static/fonts/LICENSE`.

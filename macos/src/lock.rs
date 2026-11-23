@@ -3,6 +3,8 @@
 //! Oberfläche – Server, Sitzung und laufende Agenten arbeiten weiter.
 //!
 //! Einstellungen in `<Datenordner>/desktop.json`; vom Code liegt nur ein gesalzener Hash dort.
+//! Dort steht auch, ob Updates von selbst installiert werden (`autoUpdate`, ab Werk an) – und die
+//! Zeit seit der letzten Eingabe ([`Lock::idle`]) sagt dem Updater, wann gerade niemand tippt.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,11 +24,13 @@ pub struct Settings {
     pub pin_salt: String,
     /// Minuten ohne Eingabe bis zur Sperre.
     pub lock_minutes: u32,
+    /// Updates still laden und in einem ruhigen Moment (oder beim nächsten Start) installieren.
+    pub auto_update: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { pin_hash: String::new(), pin_salt: String::new(), lock_minutes: DEFAULT_MINUTES }
+        Self { pin_hash: String::new(), pin_salt: String::new(), lock_minutes: DEFAULT_MINUTES, auto_update: true }
     }
 }
 
@@ -85,6 +89,17 @@ impl Lock {
         if !self.locked {
             self.last_activity = SystemTime::now();
         }
+    }
+
+    /// Zeit seit der letzten Eingabe (die Oberfläche meldet Eingaben höchstens alle 20 Sekunden).
+    pub fn idle(&self) -> Duration {
+        self.last_activity.elapsed().unwrap_or_default()
+    }
+
+    /// Automatische Updates ein-/ausschalten (ohne Code – das ist keine Frage der Sperre).
+    pub fn set_auto_update(&mut self, on: bool) -> Result<(), String> {
+        self.settings.auto_update = on;
+        self.save()
     }
 
     /// true, wenn die Sperre jetzt greifen soll.
@@ -202,6 +217,17 @@ mod tests {
     fn known_hash() {
         // Gleiche Datei-Formate über Versionen hinweg: Hash von "123456" mit Salz "abc"
         assert_eq!(hash("abc", "123456"), "3fc06dad73edcbc5fe46070e2f9b5d4f6d964e7a969a489b16f549eddec3ad4e");
+    }
+
+    #[test]
+    fn settings_of_older_versions() {
+        // Datei ohne `autoUpdate` (bis 1.0.0): automatische Updates sind an, der Rest bleibt
+        let s: Settings = serde_json::from_str(r#"{"pinHash":"h","pinSalt":"s","lockMinutes":3}"#).unwrap();
+        assert!(s.auto_update && s.enabled());
+        assert_eq!(s.lock_minutes, 3);
+        let s: Settings = serde_json::from_str(r#"{"autoUpdate":false}"#).unwrap();
+        assert!(!s.auto_update);
+        assert_eq!(s.lock_minutes, DEFAULT_MINUTES);
     }
 
     #[test]

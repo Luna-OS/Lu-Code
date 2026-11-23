@@ -426,7 +426,7 @@ fn UserBubble(m: Message, last: bool, active: bool) -> Element {
                     }
                 }
                 if !m.content.trim().is_empty() {
-                    div { class: "max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 text-[15px] leading-relaxed",
+                    div { class: "lu-bubble max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 text-[15px] leading-relaxed",
                         Markdown { html: m.html.clone(), class: "[&_p]:my-1" }
                     }
                 }
@@ -1113,11 +1113,15 @@ fn peek_now() -> i64 {
 #[component]
 fn SubagentCard(m: Message) -> Element {
     let data: SubagentsData = serde_json::from_value(m.data.clone()).unwrap_or_default();
-    let mut open = use_signal(|| false);
+    // `None` = von selbst: offen, solange Subagenten arbeiten (man sieht gleich, was jeder gerade
+    // tut), danach zugeklappt; ein Klick legt es fest
+    let mut chosen = use_signal(|| None::<bool>);
     let all = THREADS.read();
     let kids: Vec<ThreadSummary> = data.children.iter().filter_map(|id| all.get(id).cloned()).collect();
     drop(all);
     let working = kids.iter().filter(|k| k.status.is_active()).count();
+    let open = chosen().unwrap_or(working > 0);
+    let parent_id = m.thread_id;
     // Takt nur, solange noch einer arbeitet
     let now = if working > 0 { tick() } else { peek_now() };
     let n = data.children.len();
@@ -1126,7 +1130,7 @@ fn SubagentCard(m: Message) -> Element {
     let elapsed = duration(end - m.created_at);
     rsx! {
         div { class: "rounded-xl border bg-card",
-            button { class: "flex w-full items-center gap-3 px-3 py-2.5 text-left", onclick: move |_| open.toggle(),
+            button { class: "flex w-full items-center gap-3 px-3 py-2.5 text-left", onclick: move |_| chosen.set(Some(!open)),
                 AgentStack { kinds, size: 18 }
                 div { class: "min-w-0 flex-1",
                     div { class: "text-sm font-medium", {subagents_text(n)} }
@@ -1137,16 +1141,25 @@ fn SubagentCard(m: Message) -> Element {
                     }
                 }
                 span { class: "text-xs text-muted-foreground tabular-nums", "{elapsed}" }
-                if open() {
+                if open {
                     icons::ChevronUp { class: "size-4 text-muted-foreground" }
                 } else {
                     icons::ChevronDown { class: "size-4 text-muted-foreground" }
                 }
             }
-            if open() {
+            if open {
                 div { class: "border-t px-2 py-1.5",
                     for k in kids {
                         SubagentRow { key: "{k.id}", t: k, now }
+                    }
+                    // Allen zugleich zusehen: Text und CLI je Subagent
+                    if working > 0 {
+                        Link {
+                            to: Route::Live { scope: parent_id.to_string() },
+                            class: "mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-info hover:bg-accent/50",
+                            icons::Activity { class: "size-3.5" }
+                            {tr("Live zusehen – Text und CLI aller Subagenten")}
+                        }
                     }
                 }
             }
@@ -1163,7 +1176,13 @@ pub fn SubagentRow(t: ThreadSummary, now: i64) -> Element {
             to: Route::ThreadPage { id: t.id },
             class: "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent/50",
             AgentIcon { kind: t.agent, size: 16 }
-            span { class: "min-w-0 flex-1 truncate", "{t.title}" }
+            div { class: "min-w-0 flex-1",
+                div { class: "truncate", "{t.title}" }
+                // Arbeitet er noch: was er gerade tut (laufender Schritt bzw. letzte Zeile)
+                if t.status.is_active() {
+                    super::live::ActivityLine { thread_id: t.id }
+                }
+            }
             crate::components::common::ChangeStat { thread: t.clone() }
             match t.status {
                 ThreadStatus::Working | ThreadStatus::Waiting => rsx! { icons::LoaderCircle { class: "size-3.5 animate-spin text-muted-foreground" } },

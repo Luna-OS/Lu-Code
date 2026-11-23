@@ -91,8 +91,9 @@ Server functions (signatures fixed):
 | `agents::publish_thread(state, thread)` | agents | workspace (branch/worktree changed) |
 
 UI components (names and props fixed): `agents::{ChatView{thread_id}, Composer{project_id, thread_id},
-Lineage{thread_id}, AccountsSettings, ToolsSettings, TerminalView{id}, AgentIcon{kind, size}}` are
-embedded by `workspace` (`AppLayout`, `Home`, `ThreadPage`, `Settings`).
+Lineage{thread_id}, AccountsSettings, ToolsSettings, TerminalView{id}, AgentIcon{kind, size},
+Live{scope}, LiveButton{class}}` are embedded by `workspace` (`AppLayout`, `Home`, `ThreadPage`,
+`Settings`) and the router.
 
 API paths (under `/api/v1`):
 
@@ -201,6 +202,24 @@ output –, edits become code blocks with line numbers, red/green lines and synt
 writer remembers the file when the tool is announced and cuts the changed sections with three lines of
 context once it is done (`src/agents/edits.rs`, Myers diff in `shared/src/diff.rs`); agents that only
 report afterwards (Codex) fall back to the old/new text, the last content seen in the run or `HEAD`.
+Tool targets are shown relative to the working directory (`parse::strip_dir`); Windows paths match
+regardless of `\` or `/` and of the drive letter's case.
+
+## Live view
+
+`/live/<scope>` (`ui/src/pages/agents/live.rs`; button with a counter in the top bar, `Ctrl+K`, the
+subagent card in the chat and the lineage panel) shows every working agent at once: one tile per
+thread with its **text** – the last prompt and the answers since, as rendered Markdown – and its
+**CLI**, the steps of the run as terminal lines (`$ command` with the end of its output, `read`,
+`edit +3 −1`, `grep`, `web`, `mcp` …; shown alone, the CLI also carries the answers as `●` lines).
+`scope` is `all` or a thread number (that thread and its subagents, recursively). Tiles keep their
+order and stay when their agent finishes (until "Hide finished" or leaving the page); with nobody
+working the page shows the most recently active threads. There is no server part: a tile reads
+`state::THREADS` and `state::MESSAGES`, loads its thread's history on demand (`prefetch_messages`),
+looks only at the last 80 messages and goes through `use_memo` – it re-renders only when its own
+agent did something. `ActivityLine` is the one-line form (running or last step, else the last line
+of the answer) under each subagent in the chat's card and in the lineage panel; the card is open
+while its subagents work.
 
 ## Canvas mode
 
@@ -272,9 +291,10 @@ dragging). Without it the window stays opaque. `overlay::GLASS_SCRIPT` sets
 `window.__luGlass` and `html.lu-glass` before the first paint, so the interface only tints its
 surfaces (`ui/tailwind.css`; off under Settings → Appearance, `localStorage` `lu-glass`). The
 interface talks to the app through `window.ipc` (`util::native`): `theme:<dark|light|system>` sets the
-window appearance and with it the glass, `update:check:quiet` and `update:state` drive "Check for
-updates" in the sidebar (answer: `window.__luUpdateState(status, text)`), and ⌘, (app menu) or
-Ctrl+, call `window.__luOpenSettings()`.
+window appearance and with it the glass, `update:check:quiet`, `update:state`, `update:install` and
+`update:auto:1|0` drive the update row in the sidebar and the switch under Settings → App (answers:
+`window.__luUpdateState(status, text)`, `window.__luUpdateAuto(on, possible)` – see
+[Updates](#lucode)), and ⌘, (app menu) or Ctrl+, call `window.__luOpenSettings()`.
 
 ## macOS permissions
 
@@ -330,7 +350,11 @@ page itself stays transparent (`AppLayout`: the root is transparent, the content
 and the glow in the sky derive from `--tint`. Filled buttons carry `--gradient-primary`, cards the
 glass highlight (`@layer components`, so utilities still win), floating surfaces (`.lu-pane`,
 `bg-popover`) blur what is behind them. The native glass (`html.lu-glass`: the blurred desktop
-instead of the sky, `macos/src/glass.rs` tinted night or day) is off by default.
+instead of the sky, `macos/src/glass.rs` tinted night or day) is off by default. The finish sits
+unlayered at the end of the file, so it beats utilities on the same element: `lu-sidebar` and
+`lu-topbar` (light edge), `lu-item-on` (the open entry), `lu-composer` (glows while typing),
+`lu-bubble`, `lu-hero`, `lu-lift`, `lu-shimmer` ("Working 25s"). Four-point sparkles and an
+occasional shooting star belong to `html::before/after` and go with the stars switch.
 
 **Move from nrzCode** (`src/import/`). `mod.rs` runs the database part in one transaction of the
 target – the source `nrzcode.db` is opened read-only inside one read transaction – then copies
@@ -350,4 +374,16 @@ messages), instructions per user and project (appended to the system hint of eve
 page).
 
 **Updates** come from the GitHub releases of `Luna-OS/Lu-Code` (`macos/src/updater.rs` reads
-GitHub's and nrzGit's release shapes; `LUCODE_UPDATE_REPO` points it elsewhere).
+GitHub's and nrzGit's release shapes; `LUCODE_UPDATE_REPO` points it elsewhere). They install
+themselves (`desktop.json`: `autoUpdate`, on by default; switch under Settings → App): a newer
+release is downloaded silently, checked against the release's `SHA256SUMS` and staged
+(`pending.json` next to the file in the cache folder). `macos/src/main.rs` installs it at a quiet
+moment – `lucode::busy()` is false (no agent run, tool installation or move) and the window is
+hidden or saw no input for two minutes (ten while the page has the focus, which the injected
+script reports as `front:1|0`: somebody may be reading) –, when the app quits, or at the next start
+(`updater::install_pending`, before anything runs). Just before restarting, the app tells the
+interface (`installing`), which remembers the open page (`lu-resume`) and reopens it afterwards.
+Without a checksum in the release, or where the program cannot replace itself
+(`updater::can_self_replace`), the notice with a button stays. States for the sidebar row
+(`ui/src/pages/workspace/update.rs`): `available`, `downloading`, `progress`, `ready`,
+`installing`, `current`, `error`.

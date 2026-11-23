@@ -67,8 +67,8 @@ pub fn Home() -> Element {
             // (mit der Karte „verbinden“ darüber entsprechend niedriger – sonst rutschen Begrüssung
             // und Composer um die Höhe der Karte aus der Mitte nach unten)
             div { class: if connected { "flex min-h-[calc(100dvh-14rem)] flex-col justify-center gap-8" } else { "flex min-h-[calc(100dvh-25rem)] flex-col justify-center gap-8" },
-                div { class: "text-center",
-                    h1 { class: "lu-title text-2xl font-semibold tracking-tight md:text-3xl", {greeting(&name)} }
+                div { class: "lu-hero text-center",
+                    h1 { class: "lu-title text-3xl font-semibold tracking-tight md:text-4xl", {greeting(&name)} }
                     p { class: "mt-2 text-sm text-muted-foreground", {tr("Woran sollen die Agenten heute arbeiten?")} }
                 }
                 div { class: "grid gap-3",
@@ -158,7 +158,7 @@ pub fn Home() -> Element {
                     }
                     div { class: "grid gap-1.5 sm:grid-cols-2",
                         for t in recent {
-                            Link { key: "{t.id}", to: Route::ThreadPage { id: t.id }, class: "flex min-w-0 flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 hover:bg-accent/40",
+                            Link { key: "{t.id}", to: Route::ThreadPage { id: t.id }, class: "lu-lift flex min-w-0 flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 hover:bg-accent/40",
                                 div { class: "flex items-center gap-2 text-xs text-muted-foreground",
                                     ProjectBadge { name: t.project_name.clone(), size: 16 }
                                     span { class: "min-w-0 flex-1 truncate", {t.project_name.clone().unwrap_or_else(|| tr("Ohne Projekt"))} }

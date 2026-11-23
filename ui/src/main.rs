@@ -20,6 +20,7 @@ mod util;
 
 use components::overlay::{ConfirmHost, ImageViewerHost, Toaster};
 use dioxus::prelude::*;
+use pages::agents::Live;
 use pages::canvas::Canvas;
 use pages::workspace::*;
 
@@ -48,6 +49,10 @@ pub enum Route {
         // Raster: mehrere Threads nebeneinander (IDs mit Komma getrennt)
         #[route("/grid/:ids")]
         Grid { ids: String },
+        // Live: allen arbeitenden Agenten zusehen (`all` oder die Nummer eines Threads mit seinen
+        // Subagenten) – Text und CLI je Agent
+        #[route("/live/:scope")]
+        Live { scope: String },
         // Canvas-Modus: alle Fenster eines Arbeitsbereichs auf einer Fläche
         #[route("/canvas")]
         Canvas {},

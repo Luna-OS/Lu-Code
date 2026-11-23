@@ -68,6 +68,14 @@ fn LineageCard(thread_id: i64) -> Element {
                         {trf("{0} laufen", &[&running])}
                     }
                 }
+                if !kids.is_empty() {
+                    Link {
+                        to: Route::Live { scope: thread_id.to_string() },
+                        class: "grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                        title: tr("Live: den Subagenten zusehen (Text und CLI)"),
+                        icons::Activity { class: "size-4" }
+                    }
+                }
                 Dropdown {
                     align: Align::End,
                     trigger_class: "grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",

@@ -157,9 +157,11 @@ pub fn ThreadState(thread: ThreadSummary) -> Element {
         ThreadStatus::Working => rsx! {
             span { class: "inline-flex shrink-0 items-center gap-1 text-xs text-info",
                 icons::LoaderCircle { class: "size-3.5 animate-spin" }
-                {tr("Arbeitet")}
-                " "
-                Elapsed { since }
+                span { class: "lu-shimmer",
+                    {tr("Arbeitet")}
+                    " "
+                    Elapsed { since }
+                }
             }
         },
         ThreadStatus::Waiting => rsx! {

@@ -46,6 +46,13 @@ pub struct AppState {
     pub hub: hub::Hub,
 }
 
+/// Arbeitet dieser Prozess gerade an etwas, das ein Neustart abbräche – Agenten (laufend oder
+/// wartend), Installationen von Werkzeugen, ein Umzug von nrzCode? Die App fragt das, bevor sie
+/// ein geladenes Update installiert und neu startet.
+pub fn busy() -> bool {
+    agents::runtime::busy() > 0 || import::running()
+}
+
 /// Baut die Rocket-Instanz mit der normalen Konfiguration (`Rocket.toml`, `LUCODE_*`).
 pub async fn build() -> Result<Rocket<Build>, error::AppError> {
     build_with(config::figment()).await

@@ -640,5 +640,21 @@
   "z. B. Recherche, Schreibpartner, Assistent": "e.g. Research, Writing partner, Assistant",
   "{0} Erinnerungen": "{0} memories",
   "{0} Routinen": "{0} routines",
-  "„{0}“ löschen?": "Delete “{0}”?"
+  "„{0}“ löschen?": "Delete “{0}”?",
+  "Live": "Live",
+  "Live: arbeitenden Agenten zusehen (Text und CLI)": "Live: watch working agents (text and CLI)",
+  "luCode sucht selbst nach Updates – beim Start und dann alle paar Stunden.": "luCode looks for updates by itself – at start and then every few hours.",
+  "Updates automatisch installieren": "Install updates automatically",
+  "Neue Versionen werden im Hintergrund geladen, geprüft und installiert, sobald kein Agent arbeitet und du gerade nichts eingibst – sonst beim Beenden oder beim nächsten Start. Danach steht dieselbe Seite wieder da.": "New versions are downloaded in the background, verified and installed as soon as no agent is working and you are not typing – otherwise when you quit or at the next start. Afterwards the same page is open again.",
+  "Ein neues Update erscheint als Hinweis mit einem Knopf zum Installieren.": "A new update shows up as a notice with a button to install it.",
+  "Automatisch geht es hier nicht: Der Ordner des Programms ist schreibgeschützt. Ein neues Update erscheint als Hinweis zum Installieren.": "Automatic updates are not possible here: the program's folder is write-protected. A new update shows up as a notice to install.",
+  "Ein Agent arbeitet noch – der Neustart stoppt ihn. Ohne Klick installiert luCode das Update, sobald er fertig ist.": "One agent is still working – the restart stops it. Without a click luCode installs the update as soon as it is done.",
+  "{0} Agenten arbeiten noch – der Neustart stoppt sie. Ohne Klick installiert luCode das Update, sobald sie fertig sind.": "{0} agents are still working – the restart stops them. Without a click luCode installs the update as soon as they are done.",
+  "Jetzt aktualisieren?": "Update now?",
+  "Aktualisieren und neu starten": "Update and restart",
+  "Wird im Hintergrund geladen und von selbst installiert, sobald kein Agent arbeitet.": "Downloading in the background; it installs by itself as soon as no agent is working.",
+  "Update {0} wird geladen …": "Downloading update {0} …",
+  "Geladen und geprüft. luCode installiert es von selbst, sobald kein Agent arbeitet und du gerade nichts eingibst – oder jetzt mit einem Klick.": "Downloaded and verified. luCode installs it by itself as soon as no agent is working and you are not typing – or now with a click.",
+  "Update {0} bereit – neu starten": "Update {0} ready – restart",
+  "Update {0} wird installiert …": "Installing update {0} …"
 }

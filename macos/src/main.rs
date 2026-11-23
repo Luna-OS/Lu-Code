@@ -13,8 +13,10 @@
 //!   (Server meldet „Kein Zugriff: macOS …“), öffnen sich die Rechte (`perm:hint`).
 //! * Die Oberfläche läuft in einem nativen Fenster (WKWebView über `wry`, Fenster über `tao`),
 //!   mit macOS-Menüleiste (`muda`): Bearbeiten (Kopieren/Einfügen), Ansicht, Fenster, Hilfe.
-//! * Updates: Die App fragt die Releases in nrzGit ab (`macos-<version>`), zeigt einen Hinweis mit
-//!   Knopf, lädt die DMG, ersetzt das Bundle und startet neu (siehe `updater`).
+//! * Updates: Die App fragt die Releases ab, lädt eine neue Version still, prüft sie und setzt sie
+//!   in einem ruhigen Moment ein – kein Agent arbeitet, niemand tippt –, sonst beim Beenden oder
+//!   beim nächsten Start. Ist das abgeschaltet (Einstellungen → App) oder hier nicht möglich,
+//!   zeigt sie einen Hinweis mit Knopf (siehe `updater`).
 
 mod lock;
 #[cfg(windows)]
@@ -53,6 +55,9 @@ enum UserEvent {
     UpdateChecked { result: Result<Option<Update>, String>, manual: bool, quiet: bool },
     Progress(f64),
     Downloaded(Result<PathBuf, String>),
+    /// Die Oberfläche weiss Bescheid (sie merkt sich die offene Seite): das vorgemerkte Update
+    /// jetzt einsetzen und neu starten.
+    InstallReady,
     /// Nachricht aus einer Seite; `trusted` = von der eigenen Oberfläche im Hauptfenster.
     Ipc { msg: String, trusted: bool },
     PageLoaded(WindowId),
@@ -81,7 +86,22 @@ struct UpdateState {
     /// Hinweis vom Benutzer weggeklickt (bis zur nächsten neueren Version).
     dismissed: Option<semver::Version>,
     busy: bool,
+    /// Der laufende Download ist ein stiller (automatische Updates): kein Hinweisfenster, danach
+    /// wird vorgemerkt statt sofort installiert.
+    silent: bool,
+    /// Geladen, geprüft und vorgemerkt – wartet auf einen ruhigen Moment.
+    ready: Option<(Update, PathBuf)>,
+    /// Die Installation ist angekündigt (`UserEvent::InstallReady` folgt gleich).
+    installing: bool,
+    /// Der Benutzer will das vorgemerkte Update jetzt – auch wenn noch Agenten arbeiten.
+    force: bool,
 }
+
+/// So lange keine Eingabe, dann gilt „niemand ist gerade bei der Sache“ (für die Installation von
+/// Updates) – solange luCode nicht das vordere Fenster ist.
+const QUIET_AFTER: Duration = Duration::from_secs(120);
+/// Dasselbe, wenn luCode vorn liegt (jemand liest vielleicht, ohne etwas einzugeben).
+const QUIET_IN_FRONT: Duration = Duration::from_secs(600);
 
 struct MenuIds {
     settings: MenuItem,
@@ -148,6 +168,10 @@ fn main() {
     };
 
     updater::cleanup();
+    // Vom letzten Mal vorgemerktes Update: jetzt einsetzen – die neue Version startet gleich
+    if updater::install_pending() {
+        return;
+    }
 
     // WebView2Loader.dll steckt im Programm: vor dem ersten WebView auspacken und laden
     #[cfg(windows)]
@@ -276,6 +300,8 @@ fn main() {
     let mut main_window = Some((window, webview));
     // Oberfläche von luCode geladen? Beim Start mit Sperre erst nach dem Entsperren.
     let mut ui_loaded = false;
+    // Liegt die Oberfläche vorn (Fokus in der Seite, gemeldet als `front:1|0`)?
+    let mut ui_front = false;
     // Menüleiste (macOS): Symbol, Fenster und wann es zuletzt verschwand (ein Klick auf das
     // Symbol bei offenem Fenster soll es schliessen, nicht gleich wieder öffnen)
     #[cfg(target_os = "macos")]
@@ -348,6 +374,7 @@ fn main() {
                         }
                     } else {
                         // Windows: ohne Dock – Fenster schliessen beendet die App
+                        install_on_exit(&mut updates);
                         quit(control_flow);
                     }
                 } else {
@@ -458,10 +485,8 @@ fn main() {
                             send_window_state(_w, wv);
                             if lock.locked {
                                 show_lock(wv);
-                            } else if let Some(u) = &updates.available {
-                                if !updates.busy && updates.dismissed.as_ref() != Some(&u.version) {
-                                    show_update(wv, u);
-                                }
+                            } else if let Some(u) = banner_due(&updates, &lock) {
+                                show_update(wv, u);
                             }
                         }
                     }
@@ -489,28 +514,33 @@ fn main() {
                         tracing::info!("Code-Sperre nach Inaktivität");
                         apply_lock(&main_window, &mut extra);
                     }
+                    // Vorgemerktes Update: jetzt, wenn gerade nichts läuft und niemand tippt
+                    if updates.ready.is_some() && !updates.installing && quiet_moment(&lock, &main_window, ui_front) {
+                        announce_install(&rt, &proxy, &mut updates, &main_window);
+                    }
                 }
                 UserEvent::UpdateChecked { result, manual, quiet } => {
-                    // Knopf „Nach Updates suchen“ in der Seitenleiste: Ergebnis melden (nach einer
-                    // automatischen Prüfung nur ein gefundenes Update)
+                    // Knopf „Nach Updates suchen“ in der Seitenleiste: Ergebnis melden (ein gefundenes
+                    // Update meldet unten `send_update_state`, auch nach einer automatischen Prüfung)
                     if let Some((_, wv)) = &main_window {
-                        let state = match &result {
-                            Ok(Some(u)) => Some(("available", u.version.to_string())),
-                            Ok(None) if manual => Some(("current", updater::current_version().to_string())),
-                            Err(e) if manual => Some(("error", e.clone())),
-                            _ => None,
-                        };
-                        if let Some((status, text)) = state {
-                            update_ui(wv, status, &text);
+                        match &result {
+                            Ok(None) if manual => update_ui(wv, "current", &updater::current_version().to_string()),
+                            Err(e) if manual => update_ui(wv, "error", e),
+                            _ => {}
                         }
                     }
                     match result {
                         Ok(Some(u)) => {
                             ids.install.set_text(format!("Update auf {} installieren …", u.version));
                             ids.install.set_enabled(true);
+                            let auto = automatic(&lock, &u);
+                            let staged = updates.ready.as_ref().is_some_and(|(r, _)| r.version == u.version);
                             let fresh = updates.available.as_ref().map(|a| a.version != u.version).unwrap_or(true);
-                            let show = manual || (fresh && updates.dismissed.as_ref() != Some(&u.version));
-                            if show && !updates.busy && !lock.locked {
+                            // Hinweis mit Knöpfen: Läuft das Update automatisch, nur nach „Nach Updates
+                            // suchen“ im Menü bzw. in den Einstellungen – sonst bei jeder neuen Version
+                            let show = if auto { manual && !quiet } else { manual || (fresh && updates.dismissed.as_ref() != Some(&u.version)) };
+                            // (auch während es schon still lädt – „Aktualisieren“ zeigt dann den Fortschritt)
+                            if show && (!updates.busy || updates.silent) && !updates.installing && !lock.locked {
                                 if let Some((w, wv)) = &main_window {
                                     if manual {
                                         w.set_visible(true);
@@ -519,11 +549,20 @@ fn main() {
                                     show_update(wv, &u);
                                 }
                             }
-                            updates.available = Some(u);
-                            // LUCODE_AUTO_UPDATE=1: ohne Rückfrage laden und installieren
-                            if std::env::var("LUCODE_AUTO_UPDATE").is_ok_and(|v| v == "1") {
-                                start_download(&rt, &proxy, &mut updates, &main_window);
+                            // Eine neuere Version löst eine schon vorgemerkte ab
+                            if !staged && !updates.installing {
+                                if let Some((_, old)) = updates.ready.take() {
+                                    updater::clear_pending();
+                                    let _ = std::fs::remove_file(old);
+                                }
                             }
+                            updates.available = Some(u);
+                            // Automatisch: still laden, prüfen und vormerken – installiert wird in
+                            // einem ruhigen Moment (`UserEvent::Tick`), beim Beenden oder beim Start
+                            if auto && !staged {
+                                start_download(&rt, &proxy, &mut updates, &main_window, true);
+                            }
+                            send_update_state(&main_window, &updates);
                         }
                         Ok(None) => {
                             if manual && !quiet {
@@ -544,6 +583,11 @@ fn main() {
                 UserEvent::Ipc { msg, trusted } => {
                     if msg == "activity" {
                         lock.activity();
+                    } else if let Some(on) = msg.strip_prefix("front:") {
+                        // Nur das Hauptfenster zählt (Vorschau- und Menüleisten-Fenster melden es auch)
+                        if trusted {
+                            ui_front = on == "1";
+                        }
                     } else if !trusted {
                         tracing::warn!("Nachricht aus fremder Seite ignoriert");
                     } else if let Some(code) = msg.strip_prefix("lock:unlock:") {
@@ -557,10 +601,8 @@ fn main() {
                                         }
                                     } else {
                                         let _ = wv.evaluate_script("window.__luLock && window.__luLock.hide()");
-                                        if let Some(u) = &updates.available {
-                                            if updates.dismissed.as_ref() != Some(&u.version) && !updates.busy {
-                                                show_update(wv, u);
-                                            }
+                                        if let Some(u) = banner_due(&updates, &lock) {
+                                            show_update(wv, u);
                                         }
                                     }
                                 }
@@ -620,6 +662,7 @@ fn main() {
                                 w.set_visible(false);
                             }
                         } else {
+                            install_on_exit(&mut updates);
                             quit(control_flow);
                         }
                     } else if let Some(dir) = msg.strip_prefix("window:resize:") {
@@ -678,7 +721,7 @@ fn main() {
                         let _ = cmd;
                     } else {
                         match msg.as_str() {
-                            "update:install" => start_download(&rt, &proxy, &mut updates, &main_window),
+                            "update:install" => install_or_download(&rt, &proxy, &mut updates, &main_window),
                             "update:check:quiet" => {
                                 let p = proxy.clone();
                                 rt.spawn(async move {
@@ -686,10 +729,26 @@ fn main() {
                                     let _ = p.send_event(UserEvent::UpdateChecked { result, manual: true, quiet: true });
                                 });
                             }
-                            // Oberfläche (neu) geladen: ein schon gefundenes Update zeigen
+                            // Oberfläche (neu) geladen: Stand des Updaters und die Einstellung zeigen
                             "update:state" => {
-                                if let (Some((_, wv)), Some(u)) = (&main_window, &updates.available) {
-                                    update_ui(wv, "available", &u.version.to_string());
+                                send_update_state(&main_window, &updates);
+                                send_auto(&main_window, &lock);
+                            }
+                            // Schalter „Updates automatisch installieren“ (Einstellungen → App)
+                            "update:auto:1" | "update:auto:0" => {
+                                let on = msg.ends_with('1');
+                                match lock.set_auto_update(on) {
+                                    Ok(()) => tracing::info!("Automatische Updates: {}", if on { "ein" } else { "aus" }),
+                                    Err(e) => tracing::warn!("Einstellung nicht gespeichert: {e}"),
+                                }
+                                send_auto(&main_window, &lock);
+                                if on {
+                                    // Gleich nachsehen – ein schon gefundenes Update wird nun still geladen
+                                    let p = proxy.clone();
+                                    rt.spawn(async move {
+                                        let result = updater::check(&updater::current_version()).await;
+                                        let _ = p.send_event(UserEvent::UpdateChecked { result, manual: false, quiet: true });
+                                    });
                                 }
                             }
                             "update:later" => {
@@ -709,13 +768,72 @@ fn main() {
                 }
                 UserEvent::Progress(p) => {
                     if let Some((_, wv)) = &main_window {
-                        let _ = wv.evaluate_script(&format!("window.__luUpdate && window.__luUpdate.progress({p})"));
+                        if updates.silent {
+                            // Still: nur die Zeile unten in der Seitenleiste
+                            let percent = if p < 0.0 { -1 } else { (p * 100.0) as i64 };
+                            update_ui(wv, "progress", &percent.to_string());
+                        } else {
+                            let _ = wv.evaluate_script(&format!("window.__luUpdate && window.__luUpdate.progress({p})"));
+                        }
                     }
                 }
                 UserEvent::Downloaded(Err(e)) => {
                     updates.busy = false;
                     tracing::error!("Update: {e}");
-                    status(&main_window, "Update fehlgeschlagen", &e, true);
+                    if std::mem::take(&mut updates.silent) {
+                        // Still gescheitert: kein Fenster – die nächste Prüfung versucht es wieder,
+                        // die Seitenleiste bietet das Update zum Installieren an
+                        send_update_state(&main_window, &updates);
+                    } else {
+                        status(&main_window, "Update fehlgeschlagen", &e, true);
+                    }
+                }
+                UserEvent::Downloaded(Ok(file)) if updates.silent => {
+                    updates.busy = false;
+                    updates.silent = false;
+                    if let Some(u) = updates.available.clone() {
+                        match updater::stage(&u, &file) {
+                            Ok(()) => {
+                                tracing::info!("Update {} geladen – wird installiert, sobald nichts läuft", u.version);
+                                updates.ready = Some((u, file));
+                            }
+                            Err(e) => {
+                                tracing::warn!("Update {}: {e}", u.version);
+                                let _ = std::fs::remove_file(&file);
+                            }
+                        }
+                    }
+                    send_update_state(&main_window, &updates);
+                    // Passt es gerade? Sonst beim nächsten Takt
+                    if updates.ready.is_some() && quiet_moment(&lock, &main_window, ui_front) {
+                        announce_install(&rt, &proxy, &mut updates, &main_window);
+                    }
+                }
+                UserEvent::InstallReady => {
+                    updates.installing = false;
+                    let force = std::mem::take(&mut updates.force);
+                    if !force && lucode::busy() {
+                        // In der Zwischenzeit hat doch ein Agent begonnen: weiter warten
+                        send_update_state(&main_window, &updates);
+                    } else if let Some((u, file)) = updates.ready.take() {
+                        updater::clear_pending();
+                        match updater::install(&file) {
+                            Ok(Installed::Replaced(target)) => {
+                                tracing::info!("Update {} installiert, Neustart", u.version);
+                                updater::relaunch_after_exit(&target);
+                                quit(control_flow);
+                            }
+                            Ok(Installed::OpenedDmg(text)) => {
+                                send_update_state(&main_window, &updates);
+                                status(&main_window, "Update bereit", &text, false);
+                            }
+                            Err(e) => {
+                                tracing::error!("Update {}: {e}", u.version);
+                                send_update_state(&main_window, &updates);
+                                status(&main_window, "Update fehlgeschlagen", &e, true);
+                            }
+                        }
+                    }
                 }
                 UserEvent::Downloaded(Ok(dmg)) => {
                     status(&main_window, "Update wird installiert …", "luCode startet gleich neu.", false);
@@ -743,6 +861,7 @@ fn main() {
                 UserEvent::Menu(e) => {
                     let id = e.id();
                     if id == ids.quit.id() {
+                        install_on_exit(&mut updates);
                         quit(control_flow);
                     } else if id == ids.settings.id() {
                         if let Some((w, wv)) = &main_window {
@@ -776,7 +895,7 @@ fn main() {
                             let _ = p.send_event(UserEvent::UpdateChecked { result, manual: true, quiet: false });
                         });
                     } else if id == ids.install.id() {
-                        start_download(&rt, &proxy, &mut updates, &main_window);
+                        install_or_download(&rt, &proxy, &mut updates, &main_window);
                     } else if id == ids.reload.id() {
                         // Gesperrt: nicht neu laden (die Oberfläche bliebe sonst kurz sichtbar)
                         if let (Some(p), false) = (port, lock.locked) {
@@ -1117,8 +1236,9 @@ fn set_window_theme(main: &Option<(Window, WebView)>, theme: &str) {
     }
 }
 
-/// Ergebnis einer Update-Prüfung an die Oberfläche: `available` (mit Version), `current` (mit der
-/// eigenen Version) oder `error` (mit Text).
+/// Stand des Updaters an die Oberfläche: `available`, `downloading`, `ready`, `installing` (je mit
+/// der Version), `progress` (Prozent, -1 = unbekannt), `current` (eigene Version) oder `error`
+/// (mit Text).
 fn update_ui(wv: &WebView, status: &str, text: &str) {
     let _ = wv.evaluate_script(&format!(
         "window.__luUpdateState && window.__luUpdateState({}, {})",
@@ -1148,22 +1268,150 @@ fn status(main: &Option<(Window, WebView)>, title: &str, text: &str, error: bool
     }
 }
 
-fn start_download(
+/// Läuft dieses Update automatisch? Eingeschaltet (Einstellungen → App bzw.
+/// `LUCODE_AUTO_UPDATE=1`), das Release nennt eine Prüfsumme und das Programm kann sich selbst
+/// ersetzen.
+fn automatic(lock: &lock::Lock, u: &Update) -> bool {
+    let on = lock.settings.auto_update || std::env::var("LUCODE_AUTO_UPDATE").is_ok_and(|v| v == "1");
+    on && u.sha256.is_some() && updater::can_self_replace()
+}
+
+/// Update, für das der Hinweis mit Knöpfen (wieder) erscheinen soll: gefunden, nicht weggeklickt,
+/// nichts in Arbeit – und nicht ohnehin automatisch unterwegs.
+fn banner_due<'a>(updates: &'a UpdateState, lock: &lock::Lock) -> Option<&'a Update> {
+    let u = updates.available.as_ref()?;
+    let quiet = updates.busy || updates.installing || updates.ready.is_some() || updates.dismissed.as_ref() == Some(&u.version) || automatic(lock, u);
+    (!quiet).then_some(u)
+}
+
+/// Ruhiger Moment für die Installation: Es läuft nichts, das ein Neustart abbräche (Agenten,
+/// Installationen von Werkzeugen, ein Umzug), und niemand ist gerade bei der Sache – das Fenster
+/// ist nicht zu sehen, oder seit [`QUIET_AFTER`] gab es keine Eingabe. Liegt das Fenster vorn,
+/// liest vielleicht gerade jemand, ohne die Maus zu rühren: dort erst nach [`QUIET_IN_FRONT`].
+fn quiet_moment(lock: &lock::Lock, main: &Option<(Window, WebView)>, ui_front: bool) -> bool {
+    if lucode::busy() {
+        return false;
+    }
+    let Some((w, _)) = main else { return true };
+    if !w.is_visible() {
+        return true;
+    }
+    // Vorn: Die Seite hat den Fokus (`front:1`) – das Fenster allein meldet ihn nicht, solange er
+    // im WebView liegt
+    let in_front = ui_front || w.is_focused();
+    lock.idle() >= if in_front { QUIET_IN_FRONT } else { QUIET_AFTER }
+}
+
+/// Stand des Updaters an die Oberfläche (Zeile unten in der Seitenleiste): vorgemerkt, wird still
+/// geladen oder verfügbar.
+fn send_update_state(main: &Option<(Window, WebView)>, updates: &UpdateState) {
+    let Some((_, wv)) = main else { return };
+    if let Some((u, _)) = &updates.ready {
+        update_ui(wv, "ready", &u.version.to_string());
+    } else if let Some(u) = &updates.available {
+        update_ui(wv, if updates.busy && updates.silent { "downloading" } else { "available" }, &u.version.to_string());
+    }
+}
+
+/// Einstellung „Updates automatisch installieren“ an die Oberfläche (Schalter in Einstellungen →
+/// App): an/aus und ob sich das Programm hier überhaupt selbst ersetzen kann.
+fn send_auto(main: &Option<(Window, WebView)>, lock: &lock::Lock) {
+    if let Some((_, wv)) = main {
+        let _ = wv.evaluate_script(&format!(
+            "window.__luUpdateAuto && window.__luUpdateAuto({}, {})",
+            lock.settings.auto_update,
+            updater::can_self_replace()
+        ));
+    }
+}
+
+/// Installation des vorgemerkten Updates ankündigen: Die Oberfläche merkt sich die offene Seite
+/// (nach dem Neustart steht sie wieder da), kurz darauf folgt `UserEvent::InstallReady`.
+fn announce_install(
     rt: &tokio::runtime::Runtime,
     proxy: &EventLoopProxy<UserEvent>,
     updates: &mut UpdateState,
     main: &Option<(Window, WebView)>,
 ) {
+    let Some(version) = updates.ready.as_ref().map(|(u, _)| u.version.to_string()) else {
+        return;
+    };
+    updates.installing = true;
+    if let Some((_, wv)) = main {
+        update_ui(wv, "installing", &version);
+    }
+    let p = proxy.clone();
+    rt.spawn(async move {
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let _ = p.send_event(UserEvent::InstallReady);
+    });
+}
+
+/// „Jetzt aktualisieren“ (Knopf im Hinweis, Zeile in der Seitenleiste, Menü): ein vorgemerktes
+/// Update gleich einsetzen, sonst laden und danach installieren.
+fn install_or_download(
+    rt: &tokio::runtime::Runtime,
+    proxy: &EventLoopProxy<UserEvent>,
+    updates: &mut UpdateState,
+    main: &Option<(Window, WebView)>,
+) {
+    if updates.ready.is_some() {
+        if !updates.installing {
+            updates.force = true;
+            announce_install(rt, proxy, updates, main);
+        }
+    } else {
+        start_download(rt, proxy, updates, main, false);
+    }
+}
+
+/// Beim Beenden: ein vorgemerktes Update gleich einsetzen – der nächste Start ist dann schon die
+/// neue Version (sonst holte ihn `updater::install_pending` nach).
+fn install_on_exit(updates: &mut UpdateState) {
+    if let Some((u, file)) = updates.ready.take() {
+        updater::clear_pending();
+        match updater::install(&file) {
+            Ok(Installed::Replaced(_)) => tracing::info!("Update {} beim Beenden installiert", u.version),
+            Ok(Installed::OpenedDmg(text)) => tracing::warn!("Update {}: {text}", u.version),
+            Err(e) => tracing::warn!("Update {}: {e}", u.version),
+        }
+    }
+}
+
+/// Update laden. `silent` (automatische Updates): ohne Hinweisfenster, der Fortschritt steht nur
+/// in der Seitenleiste, danach wird vorgemerkt; sonst mit Fortschritt im Hinweis und gleich
+/// installiert.
+fn start_download(
+    rt: &tokio::runtime::Runtime,
+    proxy: &EventLoopProxy<UserEvent>,
+    updates: &mut UpdateState,
+    main: &Option<(Window, WebView)>,
+    silent: bool,
+) {
     let Some(u) = updates.available.clone() else {
         return;
     };
     if updates.busy {
+        // Lädt schon still, und der Benutzer will es jetzt: Fortschritt zeigen, danach gleich
+        // installieren
+        if updates.silent && !silent {
+            updates.silent = false;
+            if let Some((w, wv)) = main {
+                w.set_visible(true);
+                let _ = wv.evaluate_script("window.__luUpdate && window.__luUpdate.progress(-1)");
+            }
+        }
         return;
     }
     updates.busy = true;
+    updates.silent = silent;
     if let Some((w, wv)) = main {
-        w.set_visible(true);
-        let _ = wv.evaluate_script("window.__luUpdate && window.__luUpdate.progress(0)");
+        if silent {
+            update_ui(wv, "downloading", &u.version.to_string());
+        } else {
+            w.set_visible(true);
+            let _ = wv.evaluate_script("window.__luUpdate && window.__luUpdate.progress(0)");
+        }
     }
     let p = proxy.clone();
     rt.spawn(async move {

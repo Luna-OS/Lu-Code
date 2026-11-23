@@ -6,6 +6,7 @@
 //! * `chat` – Nachrichten, Werkzeug-Gruppen, Subagenten-Karte, Statuszeile
 //! * `composer` – Eingabe mit `@`/`$`/`/`, Anhänge, Auswahl Agent · Konto · Modell · Stufe
 //! * `lineage` – Subagenten für die rechte Spalte
+//! * `live` – Live-Ansicht: allen arbeitenden Agenten zusehen (Text und CLI), Knopf der Kopfzeile
 //! * `accounts`, `tools`, `chains` – Einstellungen (Konten, Werkzeuge, KI-Ketten)
 //! * `terminal`, `vt` – Terminal in reinem Rust (VT100-Interpreter)
 //! * `icons`, `data` – Agent-Icons, gemeinsame Daten und Helfer
@@ -18,6 +19,7 @@ mod composer;
 pub(crate) mod data;
 mod icons;
 mod lineage;
+mod live;
 mod notes;
 mod status;
 mod terminal;
@@ -28,6 +30,6 @@ mod vt;
 // Vertrag mit dem Bereich workspace (noch nicht alle dort eingebunden)
 #[allow(unused_imports)]
 pub use self::{
-    accounts::AccountsSettings, btw::{BtwPanel, BTW_OPEN}, chains::ChainsSettings, chat::{prefetch_messages, ChatView, PendingChat}, composer::{grid_ids, start_thread, Composer}, icons::AgentIcon, lineage::Lineage, terminal::{TerminalPane, TerminalView},
+    accounts::AccountsSettings, btw::{BtwPanel, BTW_OPEN}, chains::ChainsSettings, chat::{prefetch_messages, ChatView, PendingChat}, composer::{grid_ids, start_thread, Composer}, icons::AgentIcon, lineage::Lineage, live::{ActivityLine, Live, LiveButton}, terminal::{TerminalPane, TerminalView},
     tools::ToolsSettings, usage::{refresh_usage, reload_usage, tz_offset, UsageBoard, UsageRing, USAGE}, notes::NotesPanel, data::{duration, model_label, use_agents, AGENTS},
 };

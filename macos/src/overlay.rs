@@ -111,6 +111,13 @@ pub const LOCK_SCRIPT: &str = r#"
   ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(function (e) {
     window.addEventListener(e, act, { capture: true, passive: true });
   });
+  // Liegt die Oberfläche vorn (Fokus in der Seite)? Ein vorgemerktes Update wartet dann länger –
+  // vielleicht liest gerade jemand, ohne etwas einzugeben. (Das Fenster selbst weiss es nicht:
+  // der Fokus liegt im WebView.)
+  function front() { send(document.hasFocus() ? 'front:1' : 'front:0'); }
+  window.addEventListener('focus', front);
+  window.addEventListener('blur', front);
+  front();
   var css = '#lu-lock,#lu-settings{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;'
     + 'font:14px -apple-system,BlinkMacSystemFont,Inter,sans-serif;color:#141030}'
     + '#lu-lock{background:#f4f1ff}#lu-settings{background:rgba(0,0,0,.35)}'

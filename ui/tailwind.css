@@ -411,6 +411,10 @@ html:not(.light):not(.lu-glass):not(.lu-no-stars):not(.lu-tray) body::after {
   /* Kein Überscrollen (Nachfedern) über den Anfang oder das Ende hinaus – weder bei der Seite
      noch in Bereichen mit eigenem Bildlauf (WebKit in der macOS-App federt sonst nach) */
   html, body, * { overscroll-behavior: none; }
+  /* Farben wechseln weich statt hart – beim Überfahren, Öffnen, Auswählen (Utilities wie
+     `transition-transform` am Baustein gewinnen) */
+  a, button, [role="button"], [role="tab"], [role="menuitem"], [role="switch"] { transition: color 0.15s, background-color 0.15s, border-color 0.15s, box-shadow 0.15s, opacity 0.15s; }
+  h1, h2, h3 { letter-spacing: -0.011em; }
   ::selection { background: rgb(var(--tint) / 36%); color: var(--foreground); }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { background: rgb(var(--tint) / 26%); border-radius: 9999px; border: 2px solid transparent; background-clip: padding-box; }
@@ -505,4 +509,144 @@ html:not(.light):not(.lu-glass):not(.lu-no-stars):not(.lu-tray) body::after {
   .work-code .add .sign { color: var(--success); }
   .work-code .del { background: var(--diff-del); }
   .work-code .del .sign { color: var(--destructive); }
+
+  /* ---------------------------------------------------------------- Live-Ansicht
+     Kacheln der arbeitenden Agenten (`pages/agents/live.rs`): oben der Text, darunter das „CLI“
+     – eine Fläche wie ein Terminal mit Zeichen vorn (`$`, `›`, `●`) und eingerückter Ausgabe. */
+  .lu-live-dot { width: 0.5rem; height: 0.5rem; flex-shrink: 0; border-radius: 9999px; background: rgb(var(--tint) / 35%); }
+  .lu-live-dot-on { background: var(--info); animation: lu-ping 1.8s ease-out infinite; }
+  .lu-live-tile { transition: border-color 0.3s, box-shadow 0.3s; }
+  .lu-live-tile-on { border-color: color-mix(in srgb, var(--info) 36%, transparent); box-shadow: var(--shadow-glass), 0 0 30px -16px var(--info); }
+  .lu-live-md { font-size: 13px; line-height: 1.55; }
+  .lu-live-md p, .lu-live-md ul, .lu-live-md ol, .lu-live-md pre, .lu-live-md blockquote, .lu-live-md table { margin-top: 0.4rem; margin-bottom: 0.4rem; }
+  .lu-live-md h1, .lu-live-md h2, .lu-live-md h3, .lu-live-md h4 { margin-top: 0.7rem; margin-bottom: 0.3rem; border: 0; padding: 0; font-size: 13.5px; }
+  .lu-live-md pre { padding: 0.55rem 0.7rem; font-size: 12px; }
+  .lu-live-md pre code { font-size: 12px; }
+  .lu-term { background: var(--surface); color: var(--muted-foreground); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
+  .lu-term-row { display: flex; min-width: 0; align-items: flex-start; gap: 0.5rem; }
+  .lu-term-gap { margin-top: 0.3rem; }
+  .lu-term-gap:first-child { margin-top: 0; }
+  .lu-term-mark { width: 0.85rem; flex-shrink: 0; user-select: none; text-align: center; font-weight: 600; }
+  .lu-term-verb { width: 2.75rem; flex-shrink: 0; user-select: none; color: var(--tok-com); }
+  .lu-term-out { margin: 0 0 0 1.35rem; font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .lu-term-cursor { display: inline-block; width: 0.5rem; height: 0.95rem; margin-top: 0.15rem; border-radius: 1px; background: var(--primary); animation: lu-blink 1.1s steps(1, end) infinite; }
+}
+
+@keyframes lu-ping {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 60%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 7px transparent; }
+}
+
+@keyframes lu-blink {
+  0% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lu-live-dot-on, .lu-term-cursor { animation: none; }
+}
+
+/* ---------------------------------------------------------------- Feinschliff
+   Tiefe in den Flächen und Akzent dort, wo gerade etwas geschieht: Seitenleiste und Kopfzeile
+   mit Lichtkante, der offene Eintrag und der Composer leuchten im Akzent, Karten heben sich beim
+   Überfahren, „Arbeitet“ schimmert. Ausserhalb von @layer: Diese Regeln sollen auch Utilities
+   am selben Baustein schlagen (`shadow-sm`, `bg-muted`, Randfarben). */
+
+/* Seitenleiste: Glas mit einem Hauch Akzent von oben */
+.lu-sidebar { background-image: linear-gradient(180deg, rgb(var(--tint) / 8%) 0%, transparent 32%, transparent 72%, rgb(var(--tint) / 4%) 100%); }
+
+/* Kopfzeile: die untere Kante ist eine Lichtlinie, die zu den Seiten ausläuft */
+.lu-topbar { position: relative; border-bottom-color: transparent; background-image: linear-gradient(180deg, rgb(var(--tint) / 5%), transparent); }
+.lu-topbar::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; pointer-events: none; background: linear-gradient(90deg, rgb(var(--tint) / 8%), rgb(var(--tint) / 30%) 22%, rgb(var(--tint) / 30%) 78%, rgb(var(--tint) / 8%)); }
+
+/* Einträge der Seitenleiste: der offene trägt den Akzent (Verlauf, Lichtkante links) */
+.lu-item { transition: background-color 0.15s, border-color 0.15s, box-shadow 0.25s; }
+.lu-item-on { border-color: rgb(var(--tint) / 26%); background-image: linear-gradient(120deg, rgb(var(--tint) / 15%), rgb(var(--tint) / 4%) 72%); box-shadow: inset 0 1px rgb(255 255 255 / 5%), 0 12px 28px -20px rgb(var(--tint) / 75%); }
+.lu-item-on::before { content: ""; position: absolute; top: 20%; bottom: 20%; left: -1px; width: 2.5px; border-radius: 2px; pointer-events: none; background: var(--gradient-primary); box-shadow: 0 0 10px rgb(var(--tint) / 70%); }
+html.light .lu-item-on { box-shadow: inset 0 1px rgb(255 255 255 / 60%), 0 12px 28px -20px rgb(var(--tint) / 55%); }
+
+/* Composer: beim Schreiben leuchtet der Rand im Akzent */
+.lu-composer { transition: border-color 0.2s, box-shadow 0.3s; }
+.lu-composer:focus-within { border-color: rgb(var(--tint) / 52%); box-shadow: var(--shadow-glass), 0 0 0 3px rgb(var(--tint) / 12%), 0 20px 48px -28px rgb(var(--tint) / 80%); }
+
+/* Nachricht des Benutzers: getöntes Glas statt grauer Fläche */
+.lu-bubble { border: 1px solid rgb(var(--tint) / 17%); background-color: transparent; background-image: linear-gradient(135deg, rgb(var(--tint) / 17%), rgb(var(--tint) / 8%)); box-shadow: inset 0 1px rgb(255 255 255 / 5%); }
+html.light .lu-bubble { background-image: linear-gradient(135deg, rgb(var(--tint) / 13%), rgb(var(--tint) / 6%)); box-shadow: inset 0 1px rgb(255 255 255 / 55%); }
+
+/* Startseite: Schein hinter der Begrüssung, wie Mondlicht hinter einer Wolke */
+.lu-hero { position: relative; isolation: isolate; }
+.lu-hero::before { content: ""; position: absolute; z-index: -1; top: 50%; left: 50%; width: min(44rem, 92vw); height: 16rem; transform: translate(-50%, -50%); pointer-events: none; background: radial-gradient(ellipse at center, rgb(var(--tint) / 19%), rgb(var(--tint) / 6%) 45%, transparent 70%); filter: blur(12px); }
+html.lu-glass .lu-hero::before { opacity: 0.45; }
+
+/* Karten zum Anklicken heben sich beim Überfahren */
+.lu-lift { transition: transform 0.18s, border-color 0.18s, box-shadow 0.25s, background-color 0.18s; }
+.lu-lift:hover { transform: translateY(-1px); border-color: rgb(var(--tint) / 38%); box-shadow: var(--shadow-glass), 0 14px 34px -22px rgb(var(--tint) / 85%); }
+
+/* „Arbeitet 25s“: ein Lichtschein läuft über die Schrift */
+@keyframes lu-shimmer {
+  from { background-position: 130% 0; }
+  to { background-position: -110% 0; }
+}
+.lu-shimmer {
+  background-image: linear-gradient(100deg, currentColor 0%, currentColor 43%, color-mix(in srgb, currentColor var(--shimmer-mix, 30%), white) 50%, currentColor 57%, currentColor 100%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: lu-shimmer 2.6s linear infinite;
+}
+html.light .lu-shimmer { --shimmer-mix: 55%; }
+
+/* Markdown: Aufzählungszeichen und Zitate im Akzent, Code-Blöcke mit Lichtkante */
+.markdown ::marker { color: rgb(var(--tint) / 80%); }
+.markdown blockquote { border-left-color: rgb(var(--tint) / 45%); }
+.markdown :not(pre) > code { border: 1px solid rgb(var(--tint) / 11%); }
+.markdown pre { background-image: linear-gradient(180deg, rgb(var(--tint) / 5%), transparent 55%); box-shadow: inset 0 1px rgb(255 255 255 / 4%); }
+.markdown hr { border-color: rgb(var(--tint) / 22%); }
+
+/* Funkeln (vier Zacken, wie im Symbol von luCode) und ab und zu eine Sternschnuppe – nur über dem
+   eigenen Nachthimmel, zusammen mit den Sternen abschaltbar */
+@keyframes lu-sparkle {
+  from { opacity: 0.25; transform: scale(0.92); }
+  to { opacity: 0.75; transform: scale(1); }
+}
+@keyframes lu-meteor {
+  0%, 95% { opacity: 0; transform: translate(0, 0) rotate(-23deg); }
+  95.5% { opacity: 0.8; }
+  98%, 100% { opacity: 0; transform: translate(-340px, 144px) rotate(-23deg); }
+}
+html:not(.light):not(.lu-glass):not(.lu-no-stars):not(.lu-tray)::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23f4f1ff' d='M12 0c.9 6.6 4.5 10.2 12 12-7.5 1.8-11.1 5.4-12 12-.9-6.6-4.5-10.2-12-12 7.5-1.8 11.1-5.4 12-12z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d6cffd' d='M12 0c.9 6.6 4.5 10.2 12 12-7.5 1.8-11.1 5.4-12 12-.9-6.6-4.5-10.2-12-12 7.5-1.8 11.1-5.4 12-12z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%237fe3c6' d='M12 0c.9 6.6 4.5 10.2 12 12-7.5 1.8-11.1 5.4-12 12-.9-6.6-4.5-10.2-12-12 7.5-1.8 11.1-5.4 12-12z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 90% 15%, 26% 55%, 94% 84%;
+  background-size: 15px 15px, 11px 11px, 9px 9px;
+  animation: lu-sparkle 6s ease-in-out infinite alternate;
+}
+html:not(.light):not(.lu-glass):not(.lu-no-stars):not(.lu-tray)::after {
+  content: "";
+  position: fixed;
+  top: 12%;
+  left: 72%;
+  z-index: -1;
+  width: 150px;
+  height: 1.5px;
+  border-radius: 2px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, rgb(var(--star) / 95%), rgb(var(--tint) / 45%) 35%, transparent);
+  animation: lu-meteor 54s linear -28s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lu-shimmer { animation: none; -webkit-text-fill-color: currentColor; background-image: none; }
+  html::before, html::after { animation: none !important; }
+  .lu-lift:hover { transform: none; }
 }

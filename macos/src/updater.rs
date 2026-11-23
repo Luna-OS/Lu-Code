@@ -13,6 +13,13 @@
 //! beim Start und danach alle paar Stunden die Release-Liste ab, meldet eine neuere Version
 //! (Hinweis mit Knopf im Fenster und Eintrag im Menü), lädt die DMG, prüft die Prüfsumme,
 //! ersetzt das Programm-Bundle und startet neu.
+//!
+//! Automatisch (Einstellungen → App, ab Werk an): Die neue Version wird still geladen, gegen die
+//! Prüfsumme des Releases geprüft und vorgemerkt (`pending.json` im Cache-Ordner). Installiert
+//! wird in einem ruhigen Moment – kein Agent arbeitet, niemand tippt (`main.rs`) –, beim Beenden
+//! oder, falls es dazu nicht kam, beim nächsten Start ([`install_pending`]). Ohne Prüfsumme oder
+//! wenn sich das Programm nicht selbst ersetzen kann ([`can_self_replace`]), bleibt es beim
+//! Hinweis mit Knopf.
 
 use futures::StreamExt;
 use semver::Version;
@@ -268,6 +275,115 @@ pub fn install(file: &Path) -> Result<Installed, String> {
     Ok(Installed::Replaced(exe))
 }
 
+// ------------------------------------------------------------------ Vorgemerkte Updates
+
+/// Geladenes, geprüftes Update, das auf einen ruhigen Moment wartet. Steht als `pending.json`
+/// neben der Datei im Cache-Ordner und überlebt so das Beenden der App.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Pending {
+    version: String,
+    file: PathBuf,
+    sha256: String,
+}
+
+fn pending_path() -> PathBuf {
+    cache_dir().join("pending.json")
+}
+
+fn file_sha256(path: &Path) -> Result<String, String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 16];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// Geladenes Update vormerken. Nur mit der Prüfsumme des Releases – und die Datei muss ihr
+/// (noch) entsprechen.
+pub fn stage(update: &Update, file: &Path) -> Result<(), String> {
+    let sha256 = file_sha256(file)?;
+    if update.sha256.as_deref() != Some(sha256.as_str()) {
+        return Err("Prüfsumme fehlt oder stimmt nicht – das Update wird nicht vorgemerkt".into());
+    }
+    let pending = Pending { version: update.version.to_string(), file: file.to_path_buf(), sha256 };
+    let data = serde_json::to_vec_pretty(&pending).map_err(|e| e.to_string())?;
+    std::fs::write(pending_path(), data).map_err(|e| e.to_string())
+}
+
+/// Vorgemerktes Update, wenn es neuer ist als `current` und seine Datei unverändert im
+/// Cache-Ordner liegt; ein überholter oder beschädigter Eintrag wird samt Datei entfernt.
+pub fn pending(current: &Version) -> Option<(Version, PathBuf)> {
+    let p: Pending = serde_json::from_slice(&std::fs::read(pending_path()).ok()?).ok()?;
+    let in_cache = p.file.parent() == Some(cache_dir().as_path());
+    let valid = Version::parse(&p.version).ok().filter(|v| v > current && in_cache && file_sha256(&p.file).is_ok_and(|s| s == p.sha256));
+    match valid {
+        Some(version) => Some((version, p.file)),
+        None => {
+            clear_pending();
+            if in_cache {
+                let _ = std::fs::remove_file(&p.file);
+            }
+            None
+        }
+    }
+}
+
+pub fn clear_pending() {
+    let _ = std::fs::remove_file(pending_path());
+}
+
+/// Kann sich das Programm ohne Zutun ersetzen? Windows: sein Ordner ist beschreibbar. macOS: die
+/// App läuft aus einem Bundle in einem beschreibbaren Ordner (sonst zieht der Benutzer sie selbst
+/// aus der DMG). Nur dann gibt es automatische Updates.
+pub fn can_self_replace() -> bool {
+    #[cfg(target_os = "macos")]
+    let dir = current_bundle().and_then(|b| b.parent().map(Path::to_path_buf));
+    #[cfg(not(target_os = "macos"))]
+    let dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    dir.is_some_and(|d| writable(&d))
+}
+
+fn writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".lucode-probe-{}", std::process::id()));
+    let ok = std::fs::write(&probe, b"").is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
+}
+
+/// Beim Start der App, bevor irgendetwas läuft: ein vorgemerktes Update installieren. `true` =
+/// die neue Version startet gleich, dieser Prozess soll enden.
+pub fn install_pending() -> bool {
+    let Some((version, file)) = pending(&current_version()) else { return false };
+    // Eintrag gleich entfernen: scheitert die Installation, gibt es keine Schleife aus Neustarts
+    clear_pending();
+    if !can_self_replace() {
+        return false;
+    }
+    tracing::info!("Vorgemerktes Update {version} wird installiert");
+    match install(&file) {
+        Ok(Installed::Replaced(target)) => {
+            relaunch_after_exit(&target);
+            true
+        }
+        Ok(Installed::OpenedDmg(text)) => {
+            tracing::warn!("Update {version}: {text}");
+            false
+        }
+        Err(e) => {
+            tracing::warn!("Update {version}: {e}");
+            false
+        }
+    }
+}
+
 /// Windows: Rest eines Updates (umbenanntes altes Programm) wegräumen.
 pub fn cleanup() {
     #[cfg(not(target_os = "macos"))]
@@ -389,6 +505,28 @@ mod tests {
         assert!(name.contains(arch_tag()));
         let sum = "a".repeat(64);
         assert_eq!(sum_for(&format!("{sum}  {name}\n"), &name), Some(sum));
+    }
+
+    #[test]
+    fn staged_update_needs_the_release_checksum() {
+        let dir = std::env::temp_dir().join(format!("lucode-updater-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("luCode-9.9.9-x64.exe");
+        std::fs::write(&file, b"abc").unwrap();
+        // SHA-256 von "abc"
+        assert_eq!(file_sha256(&file).unwrap(), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        let update = |sha: Option<&str>| Update {
+            version: Version::new(9, 9, 9),
+            title: String::new(),
+            file_name: "luCode-9.9.9-x64.exe".into(),
+            file_url: String::new(),
+            sha256: sha.map(str::to_string),
+            page_url: String::new(),
+        };
+        // Ohne Prüfsumme des Releases oder mit einer anderen: nicht vormerken
+        assert!(stage(&update(None), &file).is_err());
+        assert!(stage(&update(Some(&"0".repeat(64))), &file).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

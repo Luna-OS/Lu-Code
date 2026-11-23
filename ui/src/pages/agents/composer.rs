@@ -766,7 +766,7 @@ pub fn Composer(
             }
             div {
                 "data-composer": "{field_id}",
-                class: if util::DRAGGING_FILES() { "relative rounded-2xl border border-primary/70 bg-card shadow-sm ring-2 ring-primary/30 transition-colors" } else { "relative rounded-2xl border bg-card shadow-sm transition-colors focus-within:border-ring/60" },
+                class: if util::DRAGGING_FILES() { "lu-composer relative rounded-2xl border border-primary/70 bg-card shadow-sm ring-2 ring-primary/30" } else { "lu-composer relative rounded-2xl border bg-card shadow-sm" },
                 ondragover: move |e| {
                     e.prevent_default();
                     if let Some(dt) = util::drag_event(&e).and_then(|d| d.data_transfer()) {

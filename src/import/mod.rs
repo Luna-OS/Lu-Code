@@ -54,6 +54,11 @@ static STATUS: LazyLock<Mutex<ImportStatus>> = LazyLock::new(|| Mutex::new(Impor
 /// Zähler der kopierten Dateien des laufenden Imports.
 static PROGRESS: LazyLock<Mutex<Arc<Progress>>> = LazyLock::new(|| Mutex::new(Arc::new(Progress::default())));
 
+/// Läuft gerade ein Umzug? (Die App installiert Updates erst danach – siehe [`crate::busy`].)
+pub fn running() -> bool {
+    STATUS.lock().unwrap_or_else(|e| e.into_inner()).is_running()
+}
+
 fn status_mut(f: impl FnOnce(&mut ImportStatus)) {
     f(&mut STATUS.lock().unwrap_or_else(|e| e.into_inner()));
 }

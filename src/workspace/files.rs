@@ -203,7 +203,8 @@ mod tests {
 
     #[test]
     fn paths() {
-        assert_eq!(clean("src/main.rs").unwrap().to_string_lossy(), "src/main.rs");
+        // Als Pfad vergleichen: unter Windows trennt `\`
+        assert_eq!(clean("src/main.rs").unwrap(), std::path::Path::new("src").join("main.rs"));
         assert_eq!(clean("").unwrap().to_string_lossy(), "");
         assert!(clean("../x").is_err());
         assert!(clean("/etc/passwd").is_err());

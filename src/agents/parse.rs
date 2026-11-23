@@ -506,6 +506,35 @@ fn grok(v: &Value) -> Vec<Ev> {
 
 // ------------------------------------------------------------------ Werkzeuge beschreiben
 
+/// `path` relativ zum Ordner `dir`, wenn es darin liegt (`.` für den Ordner selbst). Windows-Pfade
+/// (`C:\…`) gelten ohne Gross-/Kleinschreibung und mit `\` wie `/` als gleich – die CLIs nennen
+/// denselben Arbeitsordner mal so, mal so (sonst stünden im Chat überall volle Pfade).
+fn strip_dir(path: &str, dir: &str) -> Option<String> {
+    let dir = dir.trim_end_matches(['/', '\\']);
+    if dir.is_empty() {
+        return None;
+    }
+    let windows = dir.contains('\\') || dir.as_bytes().get(1) == Some(&b':');
+    let sep = |c: char| c == '/' || (windows && c == '\\');
+    let mut rest = path.chars();
+    for d in dir.chars() {
+        let p = rest.next()?;
+        if !(p == d || (sep(p) && sep(d)) || (windows && p.eq_ignore_ascii_case(&d))) {
+            return None;
+        }
+    }
+    let rest = rest.as_str();
+    match rest.chars().next() {
+        None => Some(".".into()),
+        Some(c) if sep(c) => {
+            let r = rest.trim_start_matches(sep);
+            Some(if r.is_empty() { ".".into() } else { r.to_string() })
+        }
+        // Nur der Anfang des Namens stimmt (`/w` und `/work/a.rs`)
+        Some(_) => None,
+    }
+}
+
 /// Art, Ziel, Kurzbeschreibung und Diffs eines Werkzeugaufrufs (über alle CLIs).
 pub fn describe(name: &str, input: &Value, workdirs: &[String]) -> (String, String, String, Vec<EditDiff>) {
     let lower = name.to_lowercase();
@@ -521,21 +550,7 @@ pub fn describe(name: &str, input: &Value, workdirs: &[String]) -> (String, Stri
         }
         String::new()
     };
-    let rel = |p: String| -> String {
-        for w in workdirs {
-            let w = w.trim_end_matches('/');
-            if w.is_empty() {
-                continue;
-            }
-            if let Some(r) = p.strip_prefix(w) {
-                if r.is_empty() || r.starts_with('/') {
-                    let r = r.trim_start_matches('/');
-                    return if r.is_empty() { ".".into() } else { r.to_string() };
-                }
-            }
-        }
-        p
-    };
+    let rel = |p: String| -> String { workdirs.iter().find_map(|w| strip_dir(&p, w)).unwrap_or(p) };
     let path = rel(field(&["file_path", "filePath", "absolute_path", "path", "notebook_path", "dir_path", "file"]));
 
     // MCP: Claude „mcp__server__tool“, Codex (umbenannt) ebenso, OpenCode „server_tool“
@@ -716,12 +731,32 @@ mod tests {
         assert_eq!((d[0].adds, d[0].dels), (3, 0));
         let (k, t, _, _) = describe("command_execution", &json!({"command": "bash -lc 'cargo test'"}), &w);
         assert_eq!((k.as_str(), t.as_str()), ("command", "cargo test"));
-        let (k, t, _, _) = describe("mcp__lugit__create_repo", &json!({}), &w);
+        let (k, t, _, _) = describe("mcp__nrzgit__create_repo", &json!({}), &w);
         assert_eq!((k.as_str(), t.as_str()), ("mcp", "nrzgit · create_repo"));
         let (k, t, _, _) = describe("mcp__lugit__create_pull_request", &json!({}), &w);
         assert_eq!((k.as_str(), t.as_str()), ("mcp", "lugit · create_pull_request"));
         let (k, t, _, _) = describe("lugit_whoami", &json!({}), &w);
         assert_eq!((k.as_str(), t.as_str()), ("mcp", "lugit · whoami"));
         assert_eq!(strip_ansi("\x1b[31mrot\x1b[0m"), "rot");
+    }
+
+    #[test]
+    fn paths_relative_to_the_workdir() {
+        assert_eq!(strip_dir("/w/src/a.rs", "/w").as_deref(), Some("src/a.rs"));
+        assert_eq!(strip_dir("/w/src/a.rs", "/w/").as_deref(), Some("src/a.rs"));
+        assert_eq!(strip_dir("/w", "/w").as_deref(), Some("."));
+        assert_eq!(strip_dir("/work/a.rs", "/w"), None);
+        assert_eq!(strip_dir("/x/a.rs", "/w"), None);
+        assert_eq!(strip_dir("a.rs", ""), None);
+        // Windows: `\` wie `/`, Laufwerk gross oder klein
+        let w = r"C:\Users\lu\repo";
+        assert_eq!(strip_dir(r"C:\Users\lu\repo\src\a.rs", w).as_deref(), Some(r"src\a.rs"));
+        assert_eq!(strip_dir("c:/users/lu/repo/src/a.rs", w).as_deref(), Some("src/a.rs"));
+        assert_eq!(strip_dir(r"C:\Users\lu\repo", w).as_deref(), Some("."));
+        assert_eq!(strip_dir(r"C:\Users\lu\repository\a.rs", w), None);
+        let (_, t, _, _) = describe("Read", &json!({"file_path": "C:/Users/lu/repo/src/main.rs"}), &[w.to_string()]);
+        assert_eq!(t, "src/main.rs");
+        // Unter Unix bleibt `\` ein gewöhnliches Zeichen
+        assert_eq!(strip_dir(r"/w\a.rs", "/w"), None);
     }
 }

@@ -805,16 +805,46 @@ fn AppearanceSection() -> Element {
 #[component]
 fn AppSection() -> Element {
     let btn = "inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-accent [&_svg]:size-4";
+    // Einstellung der App erfragen (sie antwortet über `window.__luUpdateAuto`)
+    use_hook(|| {
+        crate::util::native("update:state");
+    });
+    let auto = super::update::AUTO();
     rsx! {
-        Section { title: tr("Updates"), description: tr("luCode sucht regelmässig selbst nach Updates. Hier gleich nachsehen – ein neues Update erscheint oben als Hinweis zum Installieren."),
-            div { class: "flex flex-wrap gap-2",
-                button {
-                    class: btn,
-                    onclick: move |_| {
-                        crate::util::native("update:check");
-                    },
-                    icons::RefreshCw {}
-                    {tr("Nach Updates suchen")}
+        Section { title: tr("Updates"), description: tr("luCode sucht selbst nach Updates – beim Start und dann alle paar Stunden."),
+            div { class: "grid max-w-xl gap-3",
+                // Ältere App ohne diese Einstellung: nur der Knopf
+                if let Some((on, possible)) = auto {
+                    if possible {
+                        Toggle {
+                            checked: on,
+                            label: tr("Updates automatisch installieren"),
+                            onchange: move |v: bool| {
+                                crate::util::native(if v { "update:auto:1" } else { "update:auto:0" });
+                            },
+                        }
+                        p { class: "text-xs leading-relaxed text-muted-foreground",
+                            if on {
+                                {tr("Neue Versionen werden im Hintergrund geladen, geprüft und installiert, sobald kein Agent arbeitet und du gerade nichts eingibst – sonst beim Beenden oder beim nächsten Start. Danach steht dieselbe Seite wieder da.")}
+                            } else {
+                                {tr("Ein neues Update erscheint als Hinweis mit einem Knopf zum Installieren.")}
+                            }
+                        }
+                    } else {
+                        p { class: "text-xs leading-relaxed text-muted-foreground",
+                            {tr("Automatisch geht es hier nicht: Der Ordner des Programms ist schreibgeschützt. Ein neues Update erscheint als Hinweis zum Installieren.")}
+                        }
+                    }
+                }
+                div { class: "flex flex-wrap gap-2",
+                    button {
+                        class: btn,
+                        onclick: move |_| {
+                            crate::util::native("update:check");
+                        },
+                        icons::RefreshCw {}
+                        {tr("Nach Updates suchen")}
+                    }
                 }
             }
         }

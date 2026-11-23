@@ -97,6 +97,7 @@ fn RightBubble() -> Element {
             class: "lu-pane fixed top-[6.5px] right-[7px] z-50 flex items-center gap-0.5 rounded-2xl border bg-popover/95 p-1 shadow-xl md:right-[11px] [.lu-win_&]:right-[145px]",
             "data-drag": "1",
             onpointerdown: move |e| e.stop_propagation(),
+            crate::pages::agents::LiveButton { class: TOP_BTN }
             crate::pages::workspace::cli::CliButton { class: TOP_BTN }
             button {
                 class: "{TOP_BTN} bg-accent text-foreground",

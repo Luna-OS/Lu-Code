@@ -72,6 +72,22 @@ pub fn AppLayout() -> Element {
         }
     });
 
+    // Nach einem Neustart durch ein Update: die Seite von vorhin wieder öffnen (einmal)
+    use_effect(move || {
+        if !boot.read().as_ref().is_some_and(|(_, signed_in)| *signed_in) {
+            return;
+        }
+        let path = super::update::RESUME.peek().clone();
+        if let Some(path) = path {
+            *super::update::RESUME.write() = None;
+            if let Ok(to) = path.parse::<Route>() {
+                if !matches!(to, Route::Login { .. } | Route::Setup {} | Route::NotFound { .. }) {
+                    nav.replace(to);
+                }
+            }
+        }
+    });
+
     // Letzte Seite ausserhalb der Einstellungen: dorthin führt ihr X zurück
     use_effect(use_reactive!(|route| {
         if !matches!(route, Route::Settings { .. }) {
@@ -162,7 +178,7 @@ pub fn AppLayout() -> Element {
     rsx! {
         div { class: "flex h-dvh overflow-hidden bg-transparent",
             if LEFT() {
-                aside { class: "hidden w-72 shrink-0 flex-col border-r border-sidenav-border bg-sidenav md:flex", Sidebar { sheet: false } }
+                aside { class: "lu-sidebar hidden w-72 shrink-0 flex-col border-r border-sidenav-border bg-sidenav md:flex", Sidebar { sheet: false } }
             }
             if MOBILE_NAV() {
                 div { class: "fixed inset-0 z-50 bg-black/60 md:hidden", onclick: move |_| *MOBILE_NAV.write() = false }
@@ -532,7 +548,7 @@ fn ThreadState(thread: ThreadSummary) -> Element {
             match t.status {
                 ThreadStatus::Working => rsx! {
                     span { class: "size-3 rounded-full border-2 border-warning border-r-transparent animate-spin" }
-                    span { class: "text-foreground/80", {tr("Arbeitet")} " " Elapsed { since } }
+                    span { class: "lu-shimmer text-foreground/80", {tr("Arbeitet")} " " Elapsed { since } }
                 },
                 ThreadStatus::Waiting => rsx! {
                     icons::CircleDashed { class: "size-3.5 animate-[spin_4s_linear_infinite]" }
@@ -670,9 +686,9 @@ fn ThreadItem(thread: ThreadSummary, active: bool, current: Option<i64>, group: 
         .or_else(|| t.project_name.clone())
         .unwrap_or_default();
     let card = if active {
-        "rounded-lg border border-sidenav-border bg-sidenav-accent/70 shadow-sm"
+        "lu-item lu-item-on rounded-lg border border-sidenav-border bg-sidenav-accent/70 shadow-sm"
     } else {
-        "rounded-lg border border-transparent hover:bg-sidenav-accent/40"
+        "lu-item rounded-lg border border-transparent hover:bg-sidenav-accent/40"
     };
     let n = kids.len();
     rsx! {
@@ -1707,7 +1723,7 @@ fn TopBar() -> Element {
         // Titel und Knöpfe mittig in der Leiste (auch am Mac nicht mehr oben an der Ampel) –
         // mit und ohne Seitenleiste auf derselben Höhe; in der Canvas steht die Blase gleich hoch
         header {
-            class: if LEFT() { "flex h-14 shrink-0 items-center gap-2 border-b px-3 md:px-4 [.lu-win_&]:pr-[150px]" } else { "flex h-14 shrink-0 items-center gap-2 border-b px-3 md:px-4 [.lu-win_&]:pr-[150px] [.lu-mac_&]:pl-[80px]" },
+            class: if LEFT() { "lu-topbar flex h-14 shrink-0 items-center gap-2 border-b px-3 md:px-4 [.lu-win_&]:pr-[150px]" } else { "lu-topbar flex h-14 shrink-0 items-center gap-2 border-b px-3 md:px-4 [.lu-win_&]:pr-[150px] [.lu-mac_&]:pl-[80px]" },
             "data-drag": "1",
             button { class: "{TOP_BTN} md:hidden", title: tr("Menü"), onclick: move |_| *MOBILE_NAV.write() = true,
                 icons::Menu {}
@@ -1761,6 +1777,8 @@ fn TopBar() -> Element {
                     onclick: move |_| *super::palette::PALETTE.write() = true,
                     icons::Search {}
                 }
+                // Live: allen arbeitenden Agenten zusehen (Text und CLI)
+                crate::pages::agents::LiveButton { class: TOP_BTN }
                 // Natives CLI des Agenten statt des Chats
                 super::cli::CliButton { class: TOP_BTN }
                 // Canvas-Modus (zurück über das Profil in der Blase der Canvas)
@@ -1861,6 +1879,7 @@ fn Breadcrumb(route: Route) -> Element {
             let label = match other {
                 Route::Home {} => tr("Neuer Thread"),
                 Route::Grid { .. } => tr("Parallele Sitzungen"),
+                Route::Live { .. } => tr("Live"),
                 Route::Bots {} => tr("Bots"),
                 Route::BotPage { id } => state::BOTS.read().as_ref().and_then(|l| l.iter().find(|b| b.id == id).map(|b| b.name.clone())).unwrap_or_else(|| tr("Bot")),
                 Route::Projects {} => tr("Projekte"),
