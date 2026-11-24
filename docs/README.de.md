@@ -23,6 +23,15 @@ luCode ist die [LunaOS](https://github.com/Luna-OS)-Ausgabe von
 **Moon-Design** von luGit, Luma und MoonDisk, mit Umzug aus nrzCode auf einen Klick und einigem
 obendrauf.
 
+## Schnellstart
+
+1. **Herunterladen:** `luCode-<version>-Setup.exe` aus dem [neuesten Release](https://github.com/Luna-OS/Lu-Code/releases/latest) starten – ohne Administratorrechte.
+2. **GitHub verbinden** unter *Einstellungen → Git-Plattformen* (ein Personal Access Token) – oder **Jetzt umziehen** klicken, wenn nrzCode auf dem PC ist.
+3. **Agent dazunehmen** unter *Einstellungen → Werkzeuge* (z. B. Claude Code), anmelden unter *Einstellungen → Agenten*.
+4. **Projekt wählen** und einen Thread starten. Fertig – Updates kommen von selbst.
+
+**Inhalt:** [Was luCode dazubringt](#was-lucode-dazubringt) · [Alles aus nrzCode](#alles-aus-nrzcode) · [luCode bekommen](#lucode-bekommen) · [Umzug von nrzCode](#umzug-von-nrzcode) · [Docker](#server-mit-docker) · [Konfiguration](#konfiguration) · [Entwicklung](#entwicklung) · [Lizenz](#lizenz)
+
 ## Was luCode dazubringt
 
 | | |
