@@ -1046,6 +1046,17 @@ async fn queued_message_now_interrupts_at_once() {
     account(&t, &anna, "claude", "Claude", "sk-ant-api03-abcdefgh").await;
     let s: ThreadSummary = post(&t, &anna, "/api/v1/threads", j!({"prompt": "arbeite langsam", "agent": "claude"})).await;
     assert_eq!(s.status, ThreadStatus::Working);
+    // Erst, wenn das CLI wirklich arbeitet (und seine Sitzung gemeldet hat): Kommt der Zwischenruf
+    // vor dem Start, geht der Verlauf samt „arbeite langsam“ mit, und das nachgeahmte CLI schläft
+    let mut working = false;
+    for _ in 0..200 {
+        if messages(&t, &anna, s.id).await.iter().any(|m| m.role == "assistant" && m.content == "Ich arbeite lange.") {
+            working = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(working, "das CLI hat nicht zu arbeiten begonnen");
     let q: ThreadSummary = post(&t, &anna, &format!("/api/v1/threads/{}/messages", s.id), j!({"text": "sofort bitte"})).await;
     assert_eq!(q.queued.len(), 1);
     assert!(!q.queued[0].interrupt);

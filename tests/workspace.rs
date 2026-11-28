@@ -533,8 +533,12 @@ async fn nrzgit_and_lugit_side_by_side() {
         ok(&t, &anna, Method::Put, "/api/v1/nrzgit", Some(json!({ "url": base(&lu), "token": LUGIT_TOKEN, "kind": "lugit" }))).await;
     assert!(s.connected && s.kind == "lugit" && !s.has_mcp, "{s:?}");
     assert_eq!(s.token_url, format!("{}/user/settings/tokens", base(&lu)));
+    // GitHub bietet luCode immer an (`offered_kinds`), hier nicht verbunden
     let list: Vec<NrzGitStatus> = ok(&t, &anna, Method::Get, "/api/v1/nrzgit/connections", None).await;
-    assert_eq!(list.iter().map(|c| (c.kind.as_str(), c.connected, c.has_mcp)).collect::<Vec<_>>(), vec![("nrzgit", true, true), ("lugit", true, false)]);
+    assert_eq!(
+        list.iter().map(|c| (c.kind.as_str(), c.connected, c.has_mcp)).collect::<Vec<_>>(),
+        vec![("nrzgit", true, true), ("lugit", true, false), ("github", false, true)]
+    );
     // Ohne Angabe: die erste Verbindung (nrzGit), wie bisher
     let s: NrzGitStatus = ok(&t, &anna, Method::Get, "/api/v1/nrzgit", None).await;
     assert_eq!((s.kind.as_str(), s.url.as_str()), ("nrzgit", base(&nrz).as_str()));
@@ -595,7 +599,10 @@ async fn nrzgit_and_lugit_side_by_side() {
     assert_eq!(me.forges.len(), 1);
     let (st, _) = call(&t, Some(&anna), Method::Get, "/api/v1/nrzgit/repos?kind=lugit", None).await;
     assert_eq!(st, Status::BadRequest);
-    let (st, _) = call(&t, Some(&anna), Method::Get, "/api/v1/nrzgit?kind=github", None).await;
+    // GitHub kennt luCode, hier nicht verbunden; eine unbekannte Plattform wird abgelehnt
+    let s: NrzGitStatus = ok(&t, &anna, Method::Get, "/api/v1/nrzgit?kind=github", None).await;
+    assert!(s.kind == "github" && !s.connected, "{s:?}");
+    let (st, _) = call(&t, Some(&anna), Method::Get, "/api/v1/nrzgit?kind=gitlab", None).await;
     assert_eq!(st, Status::BadRequest);
 }
 
