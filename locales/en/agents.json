@@ -307,6 +307,8 @@
   "nrzGit ist nicht verbunden.": "nrzGit is not connected.",
   "Nutzungslimit erreicht": "Usage limit reached",
   "Nutzungslimit erreicht · zurückgesetzt um {0}": "Usage limit reached · resets at {0}",
+  "Verbindung zum Modell unterbrochen – neuer Versuch {0} von {1}": "Connection to the model interrupted – retrying ({0} of {1})",
+  "Verbindung zum Modell unterbrochen – neuer Versuch": "Connection to the model interrupted – retrying",
   "Rate-Limit erreicht": "Rate limit reached",
   "Rückfrage": "Question",
   "Selbst entscheiden lassen": "Let the agent decide",

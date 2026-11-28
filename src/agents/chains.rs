@@ -145,7 +145,7 @@ pub async fn apply(state: &AppState, t: &threads::ThreadRow, plan: &Plan) -> App
         .bind(t.id)
         .execute(&state.db)
         .await?;
-    let data = messages::jv(&SystemData { kind: "chain_switch".into(), resets_at: None, detail: format!("{} · {}", kind.name(), plan.acc.label) });
+    let data = messages::jv(&SystemData { kind: "chain_switch".into(), detail: format!("{} · {}", kind.name(), plan.acc.label), ..Default::default() });
     let name = if plan.chain.name.trim().is_empty() { "KI-Kette".to_string() } else { plan.chain.name.trim().to_string() };
     messages::insert(state, t.user_id, t.id, None, "system", &name, &data).await?;
     threads::publish(state, t.id).await

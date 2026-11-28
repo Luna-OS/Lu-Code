@@ -37,7 +37,7 @@ Fehler: `{ "error": { "code", "message" } }`. Ohne Anmeldung 401; fremde Projekt
 | Methode | Pfad | Inhalt → Antwort |
 |---|---|---|
 | GET | `/nrzgit?kind=` | → `NrzGitStatus` (Token nur als Hinweis, `tokenUrl` = `<url>/user/settings/mcp`, bei luGit `/user/settings/tokens`; `hasMcp`) |
-| GET | `/nrzgit/connections` | → `[NrzGitStatus]` – immer alle Plattformen (`nrzgit`, `lugit`, `github`), verbunden oder nicht |
+| GET | `/nrzgit/connections` | → `[NrzGitStatus]` – die angebotenen Plattformen, verbunden oder nicht: `github` immer, `nrzgit` und `lugit`, wenn verbunden, von der Verwaltung angeboten (`private_forges`) oder – nrzGit – mit Vorgabe-Adresse |
 | PUT | `/nrzgit` | `NrzGitConnect` → `NrzGitStatus`; erkennt die Plattform (nrzGit: `/api/v1/health`, luGit: `/api/health`), prüft sofort `GET <url>/api/v1/me` mit `Authorization: token <t>` und speichert nur bei Erfolg. Mit `kind` wird abgelehnt, wenn dort die andere Plattform antwortet. Die Verbindungen der anderen Plattformen bleiben. GitHub: `https://github.com` (auch ohne `url`, wenn `kind` = `github`) oder ein GitHub Enterprise Server (erkannt an `<url>/api/v3`), geprüft mit `GET /user` und `Authorization: Bearer <t>`. |
 | POST | `/nrzgit/verify?kind=` | → `NrzGitStatus` (erneut prüfen, auch ob luGit inzwischen einen MCP-Server hat) |
 | DELETE | `/nrzgit?kind=` | → 204 (Token löschen) |
