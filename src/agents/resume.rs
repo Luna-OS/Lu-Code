@@ -199,7 +199,12 @@ pub async fn after_failure(state: &AppState, thread_id: i64, run_id: i64, error:
         .execute(&state.db)
         .await?;
     let detail = tidy_messages(state, t.user_id, thread_id, run_id).await?.unwrap_or_else(|| error.trim().to_string());
-    let data = crate::agents::messages::jv(&SystemData { kind: "rate_limit".into(), resets_at: Some(at), detail: crate::agents::messages::clip(&detail, 500) });
+    let data = crate::agents::messages::jv(&SystemData {
+        kind: "rate_limit".into(),
+        resets_at: Some(at),
+        detail: crate::agents::messages::clip(&detail, 500),
+        ..Default::default()
+    });
     crate::agents::messages::insert(state, t.user_id, thread_id, Some(run_id), "system", "Rate-Limit erreicht", &data).await?;
     threads::publish(state, thread_id).await
 }

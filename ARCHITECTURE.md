@@ -262,6 +262,21 @@ history (a new session, since sessions belong to CLI and account); `preflight` s
 when the account is known to be at its limit. Without a matching chain the thread waits for the reset
 as before.
 
+## Connection errors
+
+When a CLI gives up because its request to the model did not get through ("Request timed out",
+"Connection error", "fetch failed", HTTP 500/502/503/504 …; `src/agents/retry.rs`), the run is not
+failed: `Job::execute_with_retries` in `runs.rs` starts the CLI again in the same run after 5, 30 and
+90 seconds, at most three times. If the CLI already created a session, the retry resumes it with a
+short "continue" prompt and no attachments: Claude Code stores the user's message before it calls
+the API, and filters its own error message on resume. Without a session the original prompt and
+attachments go out again. The CLI's error (its answer and the error box) is replaced by a system
+message `kind: "retry"` ("retrying n of 3"); stop and interjections end the wait. The usage of all
+attempts is added up (`Tally::checkpoint`). Rate limits are not connection errors – they go to
+`resume.rs` and AI chains. Claude Code also gets `API_TIMEOUT_MS=1800000` (its own default: 10
+minutes per request, which a non-streamed answer after a dropped stream or a buffering proxy can
+exceed).
+
 ## Native CLI
 
 `</>` in the top bar (`ui/src/pages/workspace/cli.rs`) swaps a thread's chat for the agent's own
