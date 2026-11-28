@@ -36,6 +36,8 @@ for a in "$@"; do
   prev="$a"
 done
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"'"$SID"'","mcp_servers":[{"name":"lucode","status":"connected"}]}'
+# Test „Stopp während des Wartens“: jede Anfrage läuft ab
+[ -f "$HOME/always-timeout" ] && PROMPT="zeitlimit"
 case "$PROMPT" in
   *langsam*)
     printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"Ich arbeite lange."}]},"parent_tool_use_id":null}'
@@ -56,6 +58,11 @@ case "$PROMPT" in
     printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_w","content":"ok","is_error":false}]},"parent_tool_use_id":null}'
     printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"Fertig","session_id":"'"$SID"'"}'
     exit 0 ;;
+  *zeitlimit*)
+    # Die Anfrage an die API läuft ab (so meldet es Claude Code nach seinen eigenen Wiederholungen)
+    printf '%s\n' '{"type":"assistant","message":{"model":"<synthetic>","content":[{"type":"text","text":"Request timed out"}]},"parent_tool_use_id":null,"error":"unknown"}'
+    printf '%s\n' '{"type":"result","subtype":"success","is_error":true,"result":"Request timed out","session_id":"'"$SID"'","total_cost_usd":0.01,"usage":{"input_tokens":5,"output_tokens":0}}'
+    exit 1 ;;
   *ratelimit*)
     RESET=$(( $(date +%s) + 3600 ))
     printf '%s\n' '{"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|'"$RESET"'","session_id":"'"$SID"'"}'
@@ -788,6 +795,69 @@ async fn rate_limit_schedules_resume_and_usage_counts() {
     let today = a.windows.iter().find(|w| w.key == "today").unwrap();
     assert_eq!(today.runs, 2);
     assert!(a.limits.is_empty(), "API-Schlüssel: keine Abo-Limits");
+}
+
+#[rocket::async_test]
+async fn timeout_retries_in_same_run_and_resumes_session() {
+    let t = setup().await;
+    let anna = t.user("anna", false).await;
+    let acc = account(&t, &anna, "claude", "Claude", "sk-ant-api03-abcdefgh").await;
+    let s: ThreadSummary = post(&t, &anna, "/api/v1/threads", j!({"prompt": "zeitlimit bitte", "agent": "claude"})).await;
+    let d = settle(&t, &anna, s.id).await;
+    // Ein Lauf, nach dem neuen Versuch fertig – kein Fehler, kein geplantes Weitermachen
+    assert_eq!(d.thread.status, ThreadStatus::Done, "{d:#?}");
+    assert_eq!(d.thread.resume_at, None);
+    assert_eq!(d.runs.len(), 1);
+    let run = &d.runs[0];
+    assert_eq!(run.status, "done");
+    // Verbrauch beider Versuche
+    assert_eq!((run.input_tokens, run.output_tokens), (125, 30));
+    assert!((run.cost_usd - 0.26).abs() < 1e-9, "{}", run.cost_usd);
+
+    // Der zweite Versuch setzt die Sitzung fort (die Nachricht steht dort schon) und bekommt nur
+    // die Bitte weiterzumachen
+    let h = home(&t, acc.id);
+    let args: Vec<String> = std::fs::read_to_string(h.join("last-args")).unwrap().lines().map(String::from).collect();
+    let i = args.iter().position(|a| a == "--resume").expect("--resume");
+    assert_eq!(args[i + 1], d.session_id);
+    let prompt = std::fs::read_to_string(h.join("last-prompt")).unwrap();
+    assert!(prompt.contains("continue exactly where you left off") && !prompt.contains("zeitlimit"), "{prompt}");
+    let env = std::fs::read_to_string(h.join("last-env")).unwrap();
+    assert!(env.lines().any(|l| l == "API_TIMEOUT_MS=1800000"), "{env}");
+
+    // Die Meldung des CLIs ist durch den Hinweis ersetzt
+    let msgs = messages(&t, &anna, s.id).await;
+    assert!(!msgs.iter().any(|m| m.role == "error" || m.content.contains("Request timed out")), "{msgs:#?}");
+    let notice = msgs.iter().find(|m| m.role == "system" && m.data["kind"] == "retry").expect("Hinweis");
+    assert_eq!((notice.data["attempt"].as_i64(), notice.data["attempts"].as_i64()), (Some(1), Some(3)));
+    assert_eq!(notice.data["detail"], "Request timed out");
+    assert_eq!(msgs.iter().filter(|m| m.role == "user").count(), 1, "kein zusätzlicher Prompt im Chat");
+    assert_eq!(msgs.last().unwrap().content, "Fertig: **main.rs** geändert.");
+}
+
+#[rocket::async_test]
+async fn stop_while_waiting_for_retry() {
+    let t = setup().await;
+    let anna = t.user("anna", false).await;
+    let acc = account(&t, &anna, "claude", "Claude", "sk-ant-api03-abcdefgh").await;
+    std::fs::write(home(&t, acc.id).join("always-timeout"), "").unwrap();
+    let s: ThreadSummary = post(&t, &anna, "/api/v1/threads", j!({"prompt": "hallo", "agent": "claude"})).await;
+    // Warten, bis der Hinweis „neuer Versuch“ da ist (die Pause davor dauert Sekunden)
+    let mut waited = 0;
+    while !messages(&t, &anna, s.id).await.iter().any(|m| m.data["kind"] == "retry") {
+        waited += 1;
+        assert!(waited < 200, "kein Hinweis auf einen neuen Versuch");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let started = std::time::Instant::now();
+    let _: ThreadSummary = post(&t, &anna, &format!("/api/v1/threads/{}/stop", s.id), j!({})).await;
+    let d = settle(&t, &anna, s.id).await;
+    assert!(started.elapsed() < Duration::from_secs(3), "Stopp beendet das Warten sofort");
+    assert_eq!(d.thread.status, ThreadStatus::Idle);
+    assert_eq!(d.runs[0].status, "stopped");
+    let msgs = messages(&t, &anna, s.id).await;
+    assert!(msgs.iter().any(|m| m.role == "system" && m.content == "Gestoppt"));
+    assert!(!msgs.iter().any(|m| m.role == "error"), "{msgs:#?}");
 }
 
 #[rocket::async_test]

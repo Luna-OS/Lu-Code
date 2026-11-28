@@ -418,14 +418,21 @@ pub struct SubagentsData {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SystemData {
-    /// "context_reset" | "agent_switch" | "notice" | "stopped" | "raw" | "rate_limit" | ""
+    /// "context_reset" | "agent_switch" | "notice" | "stopped" | "raw" | "rate_limit" | "retry" | ""
     pub kind: String,
-    /// rate_limit: Zeitpunkt, an dem das Limit zurückgesetzt wird (Unix-Sekunden)
+    /// rate_limit: Zeitpunkt, an dem das Limit zurückgesetzt wird (Unix-Sekunden);
+    /// retry: Zeitpunkt des neuen Versuchs
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resets_at: Option<i64>,
-    /// rate_limit: Originalmeldung des CLIs
+    /// rate_limit, retry: Originalmeldung des CLIs
     #[serde(skip_serializing_if = "String::is_empty")]
     pub detail: String,
+    /// retry: Nummer des neuen Versuchs (ab 1)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<i64>,
+    /// retry: höchstens so viele neue Versuche
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempts: Option<i64>,
 }
 
 impl SystemData {

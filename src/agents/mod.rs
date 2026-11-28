@@ -15,6 +15,7 @@
 //! * [`subagents`] und [`mcp`] – Subagenten, MCP-Server `POST /mcp`
 //! * [`terminals`] – PTY-Terminals
 //! * [`resume`] – nach einem Rate-Limit automatisch weitermachen
+//! * [`retry`] – nach einem Verbindungsfehler („Request timed out“) im selben Lauf neu versuchen
 //! * [`chains`] – KI-Ketten: bei einem Limit mit dem nächsten Konto weitermachen, `GET/PUT /chains`
 //! * [`bots`] – Bot-Modus: Bots mit Gedächtnis, Arbeitsordner und Routinen, `GET /bots`
 //! * [`notes`] – Notizblock für vorbereitete Prompts, `GET /notes`
@@ -38,6 +39,7 @@ pub mod parse;
 pub mod questions;
 pub mod queue;
 pub mod resume;
+pub mod retry;
 pub mod runs;
 pub mod runtime;
 pub mod skills;

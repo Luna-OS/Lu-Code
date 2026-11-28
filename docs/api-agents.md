@@ -91,6 +91,15 @@ Claude Code ohne `bypassPermissions`, nur Lese-/Suchwerkzeuge und lesende git-Be
 Meldung, den Limits des Kontos oder 5/10/20/40/60 Minuten) und startet dann einen Lauf mit „continue“
 (`UserMessageData.autoResume`). Eine eigene Nachricht oder Stopp hebt das auf.
 
+**Verbindungsfehler** (`src/agents/retry.rs`): Bricht das CLI ab, weil die Anfrage an das Modell nicht
+durchkam („Request timed out“, „Connection error“, „fetch failed“, HTTP 500/502/503/504 …), startet
+luCode es im selben Lauf neu – nach 5, 30 und 90 Sekunden, höchstens dreimal. Hat das CLI schon eine
+Sitzung angelegt, wird sie fortgesetzt (die Nachricht steht dort bereits) und das CLI bekommt nur die
+Bitte weiterzumachen; sonst geht die ursprüngliche Nachricht samt Anhängen noch einmal raus. Im Chat
+ersetzt die Systemnachricht `SystemData { kind: "retry", attempt, attempts, resetsAt, detail }` die
+Meldung des CLIs; Stopp und Zwischenruf beenden das Warten. Claude Code bekommt außerdem
+`API_TIMEOUT_MS=1800000` (Vorgabe des CLIs: 10 Minuten je Anfrage).
+
 Status: `working` während des Laufs (auch in der Warteschlange), `waiting` solange der Agent auf
 Subagenten wartet, danach `done` (ungelesen) bzw. `error`; gestoppt → `idle`.
 

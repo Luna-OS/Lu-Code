@@ -134,7 +134,18 @@ async fn start_inner(state: &AppState, thread_id: i64, text: &str, prompt: &str,
         a.run_id = run_id;
     }
     threads::publish(state, thread_id).await?;
-    let job = Job { state: state.clone(), thread_id, run_id, user_msg_id, prompt: prompt.to_string(), attachments: atts, stop: stop_rx, soft: soft_rx, slot };
+    let job = Job {
+        state: state.clone(),
+        thread_id,
+        run_id,
+        user_msg_id,
+        prompt: prompt.to_string(),
+        attachments: atts,
+        stop: stop_rx,
+        soft: soft_rx,
+        slot,
+        continue_session: false,
+    };
     tokio::spawn(job.run());
     Ok(run_id)
 }
@@ -241,6 +252,9 @@ struct Job {
     stop: watch::Receiver<bool>,
     soft: watch::Receiver<u8>,
     slot: Arc<tokio::sync::Mutex<Option<tokio::sync::OwnedSemaphorePermit>>>,
+    /// Neuer Versuch nach einem Verbindungsfehler, der die Sitzung des CLIs fortsetzt: statt
+    /// `prompt` und der Anhänge geht [`super::retry::PROMPT`] raus
+    continue_session: bool,
 }
 
 /// Ergebnis eines Laufs.
@@ -281,10 +295,7 @@ impl Job {
                 *self.slot.lock().await = Some(p);
                 let _ = sqlx::query("UPDATE runs SET status = 'running', started_at = ? WHERE id = ?").bind(now()).bind(run_id).execute(&state.db).await;
                 let _ = threads::publish(&state, thread_id).await;
-                match self.execute(&rundir, &mut writer).await {
-                    Ok(o) => o,
-                    Err(e) => Outcome::Failed(e.to_string()),
-                }
+                self.execute_with_retries(&rundir, &mut writer).await
             }
         };
         if let Err(e) = writer.finish().await {
@@ -379,6 +390,83 @@ impl Job {
         Ok(())
     }
 
+    /// [`Self::execute`]; bricht das CLI mit einem Verbindungsfehler ab („Request timed out“),
+    /// nach einer kurzen Pause neu – höchstens [`super::retry::DELAYS`]-mal. Stopp und Zwischenruf
+    /// beenden das Warten.
+    async fn execute_with_retries(&mut self, rundir: &Path, w: &mut Writer) -> Outcome {
+        let delays = super::retry::DELAYS;
+        let mut attempt = 0;
+        loop {
+            let outcome = match self.execute(rundir, w).await {
+                Ok(o) => o,
+                Err(e) => Outcome::Failed(e.to_string()),
+            };
+            let Outcome::Failed(error) = &outcome else { return outcome };
+            let Some(&delay) = delays.get(attempt) else { return outcome };
+            if !super::retry::is_transient(error) {
+                return outcome;
+            }
+            attempt += 1;
+            tracing::info!("Lauf {}: {} – neuer Versuch {attempt} in {delay} s", self.run_id, super::retry::short(error));
+            if let Err(e) = self.prepare_retry(w, error, attempt, delays.len(), delay).await {
+                tracing::warn!("Lauf {}: neuer Versuch nicht möglich: {e}", self.run_id);
+                return outcome;
+            }
+            let mut now = self.soft.clone();
+            tokio::select! {
+                biased;
+                _ = stop_signal(&mut self.stop) => return Outcome::Stopped,
+                _ = interrupt_signal(&mut now, NOW) => return Outcome::Interrupted,
+                _ = interrupt_signal(&mut self.soft, SOFT) => return Outcome::Interrupted,
+                _ = tokio::time::sleep(Duration::from_secs(delay)) => {}
+            }
+            // Hat das CLI eine Sitzung angelegt, steht die Nachricht dort schon: nur fortsetzen
+            if w.session.is_some() {
+                let resumable = threads::row(&self.state, self.thread_id).await.is_ok_and(|t| spec(t.kind()).supports_resume);
+                self.continue_session = self.continue_session || resumable;
+            }
+        }
+    }
+
+    /// Vor einem neuen Versuch: die Meldung des CLIs am Ende des Verlaufs (Fehler und die Antwort
+    /// mit demselben Text) durch einen Hinweis „neuer Versuch“ ersetzen, Zähler zurücksetzen.
+    async fn prepare_retry(&self, w: &mut Writer, error: &str, attempt: usize, attempts: usize, delay: u64) -> AppResult<()> {
+        let state = &self.state;
+        w.next_attempt().await?;
+        let rows: Vec<(i64, Option<i64>, String, String)> =
+            sqlx::query_as("SELECT id, run_id, role, content FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 4")
+                .bind(self.thread_id)
+                .fetch_all(&state.db)
+                .await?;
+        let mut from = None;
+        for (id, run_id, role, content) in &rows {
+            let ours = *run_id == Some(self.run_id);
+            let cli_error = match role.as_str() {
+                "error" => super::retry::is_transient(content),
+                "assistant" => content.trim() == error.trim(),
+                _ => false,
+            };
+            if !(ours && cli_error) {
+                break;
+            }
+            from = Some(*id);
+        }
+        if let Some(from) = from {
+            sqlx::query("DELETE FROM messages WHERE thread_id = ? AND run_id = ? AND id >= ?").bind(self.thread_id).bind(self.run_id).bind(from).execute(&state.db).await?;
+            crate::hub::publish(state, w.user_id, lucode_shared::HubEvent::MessagesRemoved { thread_id: self.thread_id, from_id: from });
+        }
+        let data = messages::jv(&SystemData {
+            kind: "retry".into(),
+            resets_at: Some(now() + delay as i64),
+            detail: clip(error.trim(), 500),
+            attempt: Some(attempt as i64),
+            attempts: Some(attempts as i64),
+        });
+        let text = format!("Verbindung zum Modell unterbrochen – neuer Versuch {attempt} von {attempts}");
+        messages::insert(state, w.user_id, self.thread_id, Some(self.run_id), "system", &text, &data).await?;
+        Ok(())
+    }
+
     async fn execute(&mut self, rundir: &Path, w: &mut Writer) -> AppResult<Outcome> {
         let state = self.state.clone();
         let t = threads::row(&state, self.thread_id).await?;
@@ -422,9 +510,14 @@ impl Job {
             gateway: !uses_tool_search(kind),
         };
 
+        let resume = if spec(kind).supports_resume && !t.provider_session_id.is_empty() { Some(t.provider_session_id.clone()) } else { None };
+        // Neuer Versuch nach einem Verbindungsfehler: Nachricht und Anhänge sind schon in der Sitzung
+        let continuing = self.continue_session && resume.is_some();
+        let prompt = if continuing { super::retry::PROMPT } else { self.prompt.as_str() };
+
         // Anhänge in den Laufordner kopieren
         let mut files: Vec<(PathBuf, bool, String)> = Vec::new();
-        if !self.attachments.is_empty() {
+        if !self.attachments.is_empty() && !continuing {
             let dir = rundir.join("attachments");
             tokio::fs::create_dir_all(&dir).await?;
             for (i, a) in self.attachments.iter().enumerate() {
@@ -434,7 +527,6 @@ impl Job {
             }
         }
 
-        let resume = if spec(kind).supports_resume && !t.provider_session_id.is_empty() { Some(t.provider_session_id.clone()) } else { None };
         let history = if resume.is_none() { history(&state, self.thread_id, self.user_msg_id).await? } else { String::new() };
         // Gespräch mit einem Bot: Persönlichkeit, Gedächtnis und Arbeitsordner statt Coding-Hinweis
         let hint = match super::bots::hint(&state, &t, &workdir, &forge_hint(&mcp)).await {
@@ -445,7 +537,7 @@ impl Job {
         let hint = format!("{hint}{}", crate::extras::instructions_hint(&state, t.user_id, t.project_id).await);
         // Mit `@@name` einbezogene Repositories (andere Projekte) als Referenz
         let refs = crate::workspace::referenced_repos(&state, t.user_id, &self.prompt, t.project_id).await.unwrap_or_default();
-        let ctx = Ctx { kind, t: &t, acc: &acc, workdir: &workdir, rundir, mcp: &mcp, hint, history, prompt: &self.prompt, files: &files, refs: &refs, resume };
+        let ctx = Ctx { kind, t: &t, acc: &acc, workdir: &workdir, rundir, mcp: &mcp, hint, history, prompt, files: &files, refs: &refs, resume };
         let inv = invocation(&state, &ctx).await?;
 
         let envs = env::merge(vec![
@@ -858,6 +950,9 @@ pub struct Tally {
     live: HashMap<String, [i64; 4]>,
     /// Gesamtverbrauch vom CLI gemeldet (ersetzt den laufenden Stand)
     total: bool,
+    /// Verbrauch früherer Versuche desselben Laufs (neu gestartet nach einem Verbindungsfehler):
+    /// `usage`, `detail`
+    base: ((i64, i64, f64), (i64, i64, i64)),
 }
 
 impl Tally {
@@ -874,8 +969,9 @@ impl Tally {
                 true
             }
             Ev::UsageTotal { input, output, cost, cache_read, cache_write, reasoning } => {
-                self.usage = (input, output, cost);
-                self.detail = (cache_read, cache_write, reasoning);
+                let ((bi, bo, bc), (br, bw, bt)) = self.base;
+                self.usage = (bi + input, bo + output, bc + cost);
+                self.detail = (br + cache_read, bw + cache_write, bt + reasoning);
                 self.total = true;
                 true
             }
@@ -897,14 +993,23 @@ impl Tally {
                     }
                     a
                 });
-                self.usage.0 = sum[0];
-                self.usage.1 = sum[1];
-                self.detail.0 = sum[2];
-                self.detail.1 = sum[3];
+                let ((bi, bo, _), (br, bw, _)) = self.base;
+                self.usage.0 = bi + sum[0];
+                self.usage.1 = bo + sum[1];
+                self.detail.0 = br + sum[2];
+                self.detail.1 = bw + sum[3];
                 true
             }
             _ => false,
         }
+    }
+
+    /// Vor einem neuen Versuch im selben Lauf: der bisherige Verbrauch bleibt als Grundstock, die
+    /// Angaben des neuen CLI-Prozesses kommen dazu.
+    pub fn checkpoint(&mut self) {
+        self.base = (self.usage, self.detail);
+        self.live.clear();
+        self.total = false;
     }
 }
 
@@ -1255,6 +1360,18 @@ impl Writer {
         Ok(())
     }
 
+    /// Vor einem neuen Versuch im selben Lauf (nach einem Verbindungsfehler): offene Nachrichten
+    /// abschliessen, Fehler und Exit-Code des Versuchs vergessen, Verbrauch behalten.
+    async fn next_attempt(&mut self) -> AppResult<()> {
+        self.finish().await?;
+        self.errors = 0;
+        self.result_error = None;
+        self.texts = 0;
+        self.exit_code = None;
+        self.tally.checkpoint();
+        Ok(())
+    }
+
     async fn finish(&mut self) -> AppResult<()> {
         self.close_text().await?;
         self.close_raw().await?;
@@ -1576,6 +1693,11 @@ async fn invocation(state: &AppState, ctx: &Ctx<'_>) -> AppResult<Invocation> {
             env.push(("ENABLE_CLAUDEAI_MCP_SERVERS".into(), "false".into()));
             env.push(("MCP_TOOL_TIMEOUT".into(), "3600000".into()));
             env.push(("MCP_TIMEOUT".into(), "30000".into()));
+            // Zeitlimit je Anfrage an die API (Vorgabe 10 Minuten): Reisst der Stream ab, holt
+            // Claude Code die Antwort ohne Stream am Stück – lange Antworten und Proxys oder
+            // Virenscanner, die Antworten zurückhalten, brauchen länger („Request timed out“).
+            // Ein `env` in den settings.json des Kontos geht vor.
+            env.push(("API_TIMEOUT_MS".into(), "1800000".into()));
         }
         AgentKind::Codex => {
             args.push("exec".into());

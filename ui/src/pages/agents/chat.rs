@@ -476,6 +476,23 @@ fn SystemLine(m: Message, latest: bool) -> Element {
             }
         };
     }
+    if data.kind == "retry" {
+        // Verbindungsfehler: luCode versucht es im selben Lauf noch einmal (Meldung des CLIs beim Überfahren)
+        let text = match (data.attempt, data.attempts) {
+            (Some(a), Some(n)) => trf("Verbindung zum Modell unterbrochen – neuer Versuch {0} von {1}", &[&a, &n]),
+            _ => tr("Verbindung zum Modell unterbrochen – neuer Versuch"),
+        };
+        return rsx! {
+            div { class: "flex items-center gap-3 text-xs text-muted-foreground",
+                div { class: "h-px flex-1 bg-border" }
+                span { class: "flex max-w-[80%] items-center gap-1.5 text-center", title: "{data.detail}",
+                    icons::RefreshCw { class: "size-3.5 shrink-0" }
+                    "{text}"
+                }
+                div { class: "h-px flex-1 bg-border" }
+            }
+        };
+    }
     if data.kind == "chain_switch" {
         // KI-Kette: Inhalt = Name der Kette, detail = neues Konto („Grok · Abo 1“)
         let text = trf("Limit erreicht – KI-Kette „{0}“ macht mit {1} weiter", &[&m.content, &data.detail]);
